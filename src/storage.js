@@ -41,9 +41,19 @@ export function validateBackupShape(data) {
   return isValidState(data);
 }
 
-function migrate(data) {
-  // No migrations yet; stamp the current schema version defensively.
-  return { ...createInitialState(), ...data, schemaVersion: SCHEMA_VERSION };
+// Fills in anything missing (including individual settings) from the
+// defaults, for both stored state and imported backups. No migrations yet;
+// stamps the current schema version defensively.
+export function normalizeState(data) {
+  const initial = createInitialState();
+  return {
+    ...initial,
+    ...data,
+    settings: { ...initial.settings, ...data.settings },
+    dossierHistory: Array.isArray(data.dossierHistory) ? data.dossierHistory : [],
+    longRunDecisions: isPlainObject(data.longRunDecisions) ? data.longRunDecisions : {},
+    schemaVersion: SCHEMA_VERSION,
+  };
 }
 
 export function defaultState() {
@@ -58,7 +68,7 @@ export function createStorage(backend, key = STORAGE_KEY) {
         if (!raw) return defaultState();
         const data = JSON.parse(raw);
         if (!isValidState(data)) return defaultState();
-        return migrate(data);
+        return normalizeState(data);
       } catch (e) {
         return defaultState();
       }

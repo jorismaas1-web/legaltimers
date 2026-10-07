@@ -273,3 +273,48 @@ test('formatDecimalHours uses the given decimal separator', () => {
   assert.equal(core.formatDecimalHours(2, ','), '2');
   assert.equal(core.formatDecimalHours(1.25), '1.25');
 });
+
+test('parseTimeInput accepts a decimal comma (NL input)', () => {
+  assert.equal(core.parseTimeInput('1,5'), 1.5 * 3600 * 1000);
+  assert.equal(core.parseTimeInput('0,25'), 0.25 * 3600 * 1000);
+  assert.equal(core.parseTimeInput('1,2,3'), null);
+});
+
+test('resolveEndTime turns a clock time into an end timestamp after the start, clamped to now', () => {
+  const start = localMs(2026, 10, 7, 9, 0, 0);
+  const now = localMs(2026, 10, 7, 23, 0, 0);
+  assert.equal(core.resolveEndTime(start, '17:30', now), localMs(2026, 10, 7, 17, 30, 0));
+  assert.equal(core.resolveEndTime(start, '17.30', now), localMs(2026, 10, 7, 17, 30, 0));
+  // later than now: clamp
+  assert.equal(core.resolveEndTime(start, '23:30', now), now);
+  // ran past midnight: an end time before the start time means the next day
+  const now2 = localMs(2026, 10, 8, 10, 0, 0);
+  const start2 = localMs(2026, 10, 7, 22, 0, 0);
+  assert.equal(core.resolveEndTime(start2, '0:30', now2), localMs(2026, 10, 8, 0, 30, 0));
+  assert.equal(core.resolveEndTime(start, 'nonsense', now), null);
+  assert.equal(core.resolveEndTime(start, '25:00', now), null);
+});
+
+test('starting a clock again clears its Gereed mark for today', () => {
+  const t0 = localMs(2026, 10, 7, 9, 0, 0);
+  let { state, clockId } = core.addClock(core.createInitialState(), { dossier: 'A' }, t0);
+  state = core.startClock(state, clockId, t0);
+  state = core.markReady(state, clockId, '2026-10-07', localMs(2026, 10, 7, 10, 0, 0));
+  assert.equal(core.getDaySummaryRows(state, '2026-10-07', t0 + 3600000)[0].ready, true);
+  state = core.startClock(state, clockId, localMs(2026, 10, 7, 11, 0, 0));
+  assert.equal(core.getDaySummaryRows(state, '2026-10-07', localMs(2026, 10, 7, 11, 5, 0))[0].ready, false);
+});
+
+test('buildDayTSV replaces tabs and newlines inside fields with spaces', () => {
+  const tsv = core.buildDayTSV([{ date: '2026-10-07', dossier: 'A\tB', hours: '0,2', description: 'line1\nline2' }]);
+  assert.equal(tsv.split('\n')[1], '2026-10-07\tA B\t0,2\tline1 line2');
+});
+
+test('isReady reports the Gereed mark for a clock on a day', () => {
+  const t0 = localMs(2026, 10, 7, 9, 0, 0);
+  let { state, clockId } = core.addClock(core.createInitialState(), { dossier: 'A' }, t0);
+  assert.equal(core.isReady(state, clockId, '2026-10-07'), false);
+  state = core.markReady(state, clockId, '2026-10-07', t0);
+  assert.equal(core.isReady(state, clockId, '2026-10-07'), true);
+  assert.equal(core.isReady(state, clockId, '2026-10-08'), false);
+});

@@ -184,10 +184,16 @@ export function pauseRunning(state, now) {
   return next;
 }
 
+// Starting a clock again also clears its Gereed mark for today: the time is
+// no longer final.
 export function startClock(state, clockId, now) {
   let next = state.running ? pauseRunning(state, now) : clone(state);
   next = clone(next);
   next.running = { clockId, startedAt: now };
+  const key = adjKey(clockId, dayKey(now));
+  if (next.dayData[key] && next.dayData[key].ready) {
+    next.dayData[key] = { ...next.dayData[key], ready: false };
+  }
   return next;
 }
 
@@ -258,6 +264,10 @@ export function markReady(state, clockId, day, now) {
   const key = adjKey(clockId, day);
   next.dayData[key] = { ...getDayData(next, clockId, day), ready: true };
   return next;
+}
+
+export function isReady(state, clockId, day) {
+  return getDayData(state, clockId, day).ready;
 }
 
 export function getDaySummaryRows(state, day, now) {
@@ -347,12 +357,32 @@ export function parseTimeInput(str) {
     return (Number(h) * 60 + Number(mi)) * 60 * 1000;
   }
 
-  m = s.match(/^\d+(\.\d+)?$/);
+  m = s.match(/^\d+([.,]\d+)?$/);
   if (m) {
-    return Math.round(Number(s) * 3600 * 1000);
+    return Math.round(Number(s.replace(',', '.')) * 3600 * 1000);
   }
 
   return null;
+}
+
+// Turns a clock time ("17:30" or "17.30") into the end timestamp of a run that
+// started at `startedAt`: the first such moment after the start (so a run past
+// midnight ends the next day), never later than `now`. Null if unparseable.
+export function resolveEndTime(startedAt, str, now) {
+  const m = typeof str === 'string' && str.trim().match(/^(\d{1,2})[:.](\d{2})$/);
+  if (!m) return null;
+  const h = Number(m[1]);
+  const mi = Number(m[2]);
+  if (h > 23 || mi > 59) return null;
+  const d = new Date(startedAt);
+  d.setHours(h, mi, 0, 0);
+  let end = d.getTime();
+  if (end <= startedAt) {
+    const n = new Date(end);
+    n.setDate(n.getDate() + 1);
+    end = n.getTime();
+  }
+  return Math.min(end, now);
 }
 
 // ---------- dossier number extraction ----------
@@ -371,11 +401,15 @@ export function extractDossierNumber(dossierLine) {
 
 // ---------- TSV ----------
 
+function tsvField(v) {
+  return String(v ?? '').replace(/[\t\r\n]+/g, ' ');
+}
+
 export function buildDayTSV(rows) {
   const header = ['date', 'dossier', 'hours', 'description'];
   const lines = [header.join('\t')];
   for (const r of rows) {
-    lines.push([r.date, r.dossier, r.hours, r.description].join('\t'));
+    lines.push([r.date, r.dossier, r.hours, r.description].map(tsvField).join('\t'));
   }
   return lines.join('\n');
 }

@@ -87,3 +87,12 @@ test('validateBackupShape validates an exported backup before import', () => {
   assert.equal(storage.validateBackupShape('not an object'), false);
   assert.equal(storage.validateBackupShape(null), false);
 });
+
+test('normalizeState fills missing settings with defaults (e.g. a hand-edited backup)', () => {
+  const data = { ...core.createInitialState(), settings: { roundUnitMinutes: 15 } };
+  const s = storage.normalizeState(data);
+  assert.equal(s.settings.roundUnitMinutes, 15);
+  assert.equal(s.settings.roundMode, 'up');
+  assert.equal(s.settings.hoursFormat, 'decimal');
+  assert.ok(Array.isArray(s.dossierHistory));
+});
