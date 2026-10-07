@@ -10,7 +10,7 @@
 </head>
 <body>
 <header class="app-header">
-  <h1 class="app-title" data-i18n="appTitle">Legal Timers</h1>
+  <h1 class="app-title"><span data-i18n="appTitle">Legal Timers</span> <span class="beta-badge">beta</span></h1>
   <div class="header-total">
     <span data-i18n="todayTotal">Totaal vandaag</span>:
     <strong id="header-today-total">0:00:00</strong>
@@ -26,6 +26,7 @@
 </nav>
 
 <main>
+<p id="storage-warning" class="storage-warning" data-i18n="storageWarning" hidden>Je browser staat niet toe dat deze pagina gegevens bewaart. Je tijden worden niet opgeslagen.</p>
 
 <section id="view-timers" class="view is-active">
   <div class="toolbar">
@@ -34,7 +35,7 @@
   </div>
   <p class="shortcuts-help" data-i18n="shortcutsHelp">1-9 start/wissel timer, spatie pauzeert alles, N nieuwe timer.</p>
   <div id="long-run-banner" class="long-run-banner" hidden>
-    <span data-i18n="longRunBanner">Liep deze echt door?</span>
+    <span data-i18n="longRunBanner">Liep deze echt door?</span> <span id="long-run-dossier"></span>
     <button type="button" id="long-run-keep" data-i18n="longRunKeep">Klopt, laten staan</button>
     <button type="button" id="long-run-correct" data-i18n="longRunCorrect">Corrigeer eindtijd</button>
   </div>
@@ -43,7 +44,13 @@
 </section>
 
 <section id="view-day" class="view">
-  <h2 data-i18n="daySummaryTitle">Tijdsoverzicht vandaag</h2>
+  <div class="toolbar">
+    <button type="button" id="day-prev-btn" data-i18n="dayPrev">Vorige dag</button>
+    <button type="button" id="day-today-btn" data-i18n="dayToday">Vandaag</button>
+    <button type="button" id="day-next-btn" data-i18n="dayNext">Volgende dag</button>
+  </div>
+  <h2 id="day-title">Tijdsoverzicht vandaag</h2>
+  <p id="day-empty" class="day-empty" data-i18n="dayEmpty" hidden>Geen tijd geschreven op deze dag.</p>
   <div class="table-scroll">
     <table id="day-table" class="day-table">
       <thead>
@@ -114,7 +121,7 @@
   <h2 data-i18n="backupTitle">Backup</h2>
   <div class="toolbar">
     <button type="button" id="backup-export-btn" data-i18n="backupExport">Exporteer backup</button>
-    <label class="file-label" data-i18n="backupImport">Importeer backup
+    <label class="file-label"><span data-i18n="backupImport">Importeer backup</span>
       <input type="file" id="backup-import-input" accept="application/json">
     </label>
   </div>
@@ -148,7 +155,7 @@
   <article class="card">
     <input type="text" class="card-dossier" list="dossier-history">
     <div class="card-time-row">
-      <input type="text" class="card-time" inputmode="numeric">
+      <input type="text" class="card-time">
       <button type="button" class="card-startpause"></button>
     </div>
     <div class="card-actions">

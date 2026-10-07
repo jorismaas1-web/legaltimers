@@ -1,23 +1,62 @@
 import * as core from './core.js';
-import { createStorage, validateBackupShape } from './storage.js';
+import { createStorage, validateBackupShape, normalizeState, STORAGE_KEY } from './storage.js';
 import { detectLanguage, translate } from './i18n.js';
 
-const store = createStorage(window.localStorage);
-let state = store.load();
-if (!state.settings.language) {
-  state = core.updateSettings(state, { language: detectLanguage(navigator.language) });
+// Reading window.localStorage itself throws when the browser blocks site
+// data; fall back to a backend that fails every call so the app still runs
+// and the storage warning shows.
+function storageBackend() {
+  try {
+    return window.localStorage;
+  } catch (e) {
+    return {
+      getItem() {
+        throw e;
+      },
+      setItem() {
+        throw e;
+      },
+    };
+  }
 }
+
+const store = createStorage(storageBackend());
+let state = withLanguage(store.load());
 
 let focusNewDossierFor = null;
 let weekCursor = core.getWeekStart(Date.now());
+let dayCursor = null; // null = today
 const cardEls = new Map();
+
+function withLanguage(s) {
+  if (s.settings.language) return s;
+  return core.updateSettings(s, { language: detectLanguage(navigator.language) });
+}
 
 function t(key) {
   return translate(state.settings.language, key);
 }
 
 function persist() {
-  store.save(state);
+  const ok = store.save(state);
+  document.getElementById('storage-warning').hidden = ok;
+}
+
+// Another tab with this page saved: take over its state so the tabs do not
+// overwrite each other's time.
+window.addEventListener('storage', (e) => {
+  if (e.key !== STORAGE_KEY) return;
+  state = withLanguage(store.load());
+  rerenderAll();
+});
+
+function rerenderAll() {
+  applyI18n();
+  renderDossierHistory();
+  renderCards();
+  renderDay();
+  renderWeek();
+  renderSettings();
 }
 
 function now() {
@@ -55,17 +94,20 @@ function setActiveTab(tab) {
 document.getElementById('tabs').addEventListener('click', (e) => {
   const btn = e.target.closest('.tab-btn');
   if (!btn) return;
+  if (btn.dataset.tab === 'day') dayCursor = null;
   setActiveTab(btn.dataset.tab);
 });
 
 // ---------- confirm dialog ----------
 
-function showConfirm(message, onConfirm) {
+function showConfirm(message, onConfirm, okLabel = t('delete')) {
   const dialog = document.getElementById('confirm-dialog');
   document.getElementById('confirm-message').textContent = message;
   dialog.hidden = false;
   const ok = document.getElementById('confirm-ok');
   const cancel = document.getElementById('confirm-cancel');
+  ok.textContent = okLabel;
+  ok.focus();
   function cleanup() {
     dialog.hidden = true;
     ok.removeEventListener('click', onOk);
@@ -134,7 +176,7 @@ function createCardElement(clock) {
     });
   });
 
-  cardEls.set(clock.id, { node, dossierInput, timeInput, startPauseBtn, readyBtn });
+  cardEls.set(clock.id, { node, dossierInput, timeInput, startPauseBtn, readyBtn, deleteBtn });
   return node;
 }
 
@@ -152,6 +194,7 @@ function renderCards() {
   const grid = document.getElementById('cards-grid');
   const seen = new Set();
 
+  const day = today();
   for (const clock of core.activeClocks(state)) {
     seen.add(clock.id);
     let entry = cardEls.get(clock.id);
@@ -162,10 +205,16 @@ function renderCards() {
     } else if (!grid.contains(entry.node)) {
       grid.appendChild(entry.node);
     }
+    const running = !!(state.running && state.running.clockId === clock.id);
+    const ready = !running && core.isReady(state, clock.id, day);
     if (document.activeElement !== entry.dossierInput) entry.dossierInput.value = clock.dossier;
-    entry.node.classList.toggle('is-running', !!(state.running && state.running.clockId === clock.id));
-    entry.startPauseBtn.textContent = state.running && state.running.clockId === clock.id ? t('pause') : t('start');
-    entry.readyBtn.textContent = t('ready');
+    entry.dossierInput.placeholder = t('dossierPlaceholder');
+    entry.node.classList.toggle('is-running', running);
+    entry.node.classList.toggle('is-ready', ready);
+    entry.startPauseBtn.textContent = running ? t('pause') : t('start');
+    entry.readyBtn.textContent = ready ? `${t('ready')} ✓` : t('ready');
+    entry.deleteBtn.setAttribute('aria-label', t('deleteTimer'));
+    entry.deleteBtn.title = t('deleteTimer');
   }
 
   for (const [clockId, entry] of [...cardEls.entries()]) {
@@ -224,6 +273,8 @@ function updateLongRunBanner() {
   const { clockId, startedAt } = state.running;
   const key = longRunKey(clockId, startedAt);
   if (core.isLongRun(startedAt, now()) && state.longRunDecisions[key] !== 'keep') {
+    const clock = state.clocks.find((c) => c.id === clockId);
+    document.getElementById('long-run-dossier').textContent = clock && clock.dossier ? `(${clock.dossier})` : '';
     banner.hidden = false;
   } else {
     banner.hidden = true;
@@ -240,12 +291,15 @@ document.getElementById('long-run-keep').addEventListener('click', () => {
 
 document.getElementById('long-run-correct').addEventListener('click', () => {
   if (!state.running) return;
-  const current = core.formatHMS(now() - state.running.startedAt);
-  const answer = window.prompt(`${t('longRunCorrect')} (h:mm:ss)`, current);
+  const started = new Date(state.running.startedAt);
+  const startedLabel = `${started.getHours()}:${String(started.getMinutes()).padStart(2, '0')}`;
+  const answer = window.prompt(t('longRunCorrectPrompt').replace('{start}', startedLabel), '');
   if (answer === null) return;
-  const parsed = core.parseTimeInput(answer);
-  if (parsed === null) return;
-  const correctedEnd = state.running.startedAt + parsed;
+  const correctedEnd = core.resolveEndTime(state.running.startedAt, answer, now());
+  if (correctedEnd === null) {
+    window.alert(t('longRunCorrectInvalid'));
+    return;
+  }
   state = core.pauseRunning(state, correctedEnd);
   persist();
   renderCards();
@@ -272,12 +326,22 @@ function tick() {
     const clock = state.clocks.find((c) => c.id === state.running.clockId);
     const elapsedToday = core.elapsedForDay(state, state.running.clockId, day, n);
     const label = core.formatHM(elapsedToday / 3600000);
-    document.title = `▶ ${label} · ${clock ? clock.dossier : ''}`.trim();
+    document.title = clock && clock.dossier ? `▶ ${label} · ${clock.dossier}` : `▶ ${label}`;
   } else {
     document.title = t('appTitle');
   }
 
   updateLongRunBanner();
+
+  const dayView = document.getElementById('view-day');
+  if (
+    state.running &&
+    dayView.classList.contains('is-active') &&
+    !dayView.contains(document.activeElement) &&
+    n - lastDayRender > 15000
+  ) {
+    renderDay();
+  }
 }
 
 setInterval(tick, 1000);
@@ -286,6 +350,9 @@ setInterval(tick, 1000);
 
 document.addEventListener('keydown', (e) => {
   if (isTypingTarget(document.activeElement)) return;
+  if (e.metaKey || e.ctrlKey || e.altKey) return;
+  if (!document.getElementById('confirm-dialog').hidden) return;
+  if (!document.getElementById('view-timers').classList.contains('is-active')) return;
   if (e.key >= '1' && e.key <= '9') {
     const idx = Number(e.key) - 1;
     const clock = core.activeClocks(state)[idx];
@@ -302,12 +369,23 @@ document.addEventListener('keydown', (e) => {
 
 // ---------- Day view ----------
 
+let lastDayRender = 0;
+
+function shownDay() {
+  return dayCursor || today();
+}
+
 function renderDay() {
-  const day = today();
+  lastDayRender = now();
+  const day = shownDay();
+  const isToday = day === today();
   const n = now();
+  document.getElementById('day-title').textContent = isToday ? t('daySummaryTitle') : `${t('daySummaryFor')} ${formatDayLabel(day)}`;
+  document.getElementById('day-next-btn').disabled = isToday;
   const rows = core.getDaySummaryRows(state, day, n);
   const tbody = document.getElementById('day-table-body');
   tbody.innerHTML = '';
+  document.getElementById('day-empty').hidden = rows.length > 0;
 
   for (const row of rows) {
     const tr = document.createElement('tr');
@@ -319,7 +397,12 @@ function renderDay() {
 
     const tdDossier = document.createElement('td');
     tdDossier.append(row.dossier, copyButton(dossierNumber, t('copyDossier')));
-
+    if (row.ready) {
+      const badge = document.createElement('span');
+      badge.className = 'ready-badge';
+      badge.textContent = t('ready');
+      tdDossier.append(badge);
+    }
 
     const tdExact = document.createElement('td');
     tdExact.textContent = core.formatHMS(row.elapsedMs);
@@ -371,26 +454,68 @@ function copyButton(valueOrFn, label) {
   btn.addEventListener('click', (e) => {
     e.stopPropagation();
     const value = typeof valueOrFn === 'function' ? valueOrFn() : valueOrFn;
-    copyToClipboard(value);
+    copyToClipboard(value, btn);
   });
   return btn;
 }
 
-function copyToClipboard(text) {
-  if (navigator.clipboard && navigator.clipboard.writeText) {
-    navigator.clipboard.writeText(text).catch(() => {});
+// Copies and briefly shows a check mark (or a cross if the browser refused)
+// on the button that was clicked.
+function copyToClipboard(text, btn) {
+  const flash = (ok) => {
+    if (!btn) return;
+    const original = btn.dataset.label || btn.textContent;
+    btn.dataset.label = original;
+    btn.textContent = ok ? (btn.classList.contains('cell-copy-btn') ? '✓' : `✓ ${t('copied')}`) : '✗';
+    clearTimeout(btn._flashTimer);
+    btn._flashTimer = setTimeout(() => {
+      btn.textContent = original;
+      delete btn.dataset.label;
+    }, 1200);
+  };
+  if (!navigator.clipboard || !navigator.clipboard.writeText) {
+    flash(false);
+    return;
   }
+  navigator.clipboard.writeText(text).then(
+    () => flash(true),
+    () => flash(false),
+  );
 }
 
-document.getElementById('copy-day-table-btn').addEventListener('click', () => {
-  const day = today();
+function formatDayLabel(day) {
+  const [y, m, d] = day.split('-').map(Number);
+  const date = new Date(y, m - 1, d);
+  return date.toLocaleDateString(state.settings.language === 'nl' ? 'nl-NL' : 'en-GB', {
+    weekday: 'long',
+    day: 'numeric',
+    month: 'long',
+  });
+}
+
+function shiftDay(n) {
+  const [y, m, d] = shownDay().split('-').map(Number);
+  const next = core.dayKey(core.addDays(new Date(y, m - 1, d).getTime(), n));
+  dayCursor = next >= today() ? null : next;
+  renderDay();
+}
+
+document.getElementById('day-prev-btn').addEventListener('click', () => shiftDay(-1));
+document.getElementById('day-next-btn').addEventListener('click', () => shiftDay(1));
+document.getElementById('day-today-btn').addEventListener('click', () => {
+  dayCursor = null;
+  renderDay();
+});
+
+document.getElementById('copy-day-table-btn').addEventListener('click', (e) => {
+  const day = shownDay();
   const n = now();
   const rows = core.getDaySummaryRows(state, day, n).map((row) => {
     const roundedHours = core.roundHoursMs(row.elapsedMs, state.settings.roundUnitMinutes, state.settings.roundMode);
     const hoursDisplay = formatHoursForDisplay(roundedHours);
     return { date: day, dossier: row.dossier, hours: hoursDisplay, description: row.description };
   });
-  copyToClipboard(core.buildDayTSV(rows));
+  copyToClipboard(core.buildDayTSV(rows), e.currentTarget);
 });
 
 // ---------- Week view ----------
@@ -416,7 +541,16 @@ function renderWeek() {
   headRow.children[0].textContent = t('colDossier');
   agg.days.forEach((day, i) => {
     const th = document.createElement('th');
-    th.textContent = labels[i];
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'week-day-btn';
+    btn.textContent = labels[i];
+    btn.title = `${t('openDay')}: ${formatDayLabel(day)}`;
+    btn.addEventListener('click', () => {
+      dayCursor = day >= today() ? null : day;
+      setActiveTab('day');
+    });
+    th.appendChild(btn);
     if (core.weekHasUnprocessed(state, day, n)) th.classList.add('week-day-dot');
     headRow.appendChild(th);
   });
@@ -506,21 +640,22 @@ document.getElementById('settings-delete-weeks').addEventListener('change', (e) 
 document.getElementById('settings-delete-weeks-btn').addEventListener('click', () => {
   const weeks = state.settings.deleteOlderThanWeeks;
   if (!weeks || weeks < 1) return;
-  showConfirm(`${t('settingsDeleteOldApply')}: ${weeks}w`, () => {
-    state = core.pruneOlderThan(state, weeks, now());
-    persist();
-    renderWeek();
-  });
+  showConfirm(
+    t('settingsDeleteOldConfirm').replace('{weeks}', String(weeks)),
+    () => {
+      state = core.pruneOlderThan(state, weeks, now());
+      persist();
+      rerenderAll();
+    },
+    t('settingsDeleteOldApply'),
+  );
 });
 
 document.getElementById('lang-toggle').addEventListener('click', () => {
   const next = state.settings.language === 'nl' ? 'en' : 'nl';
   state = core.updateSettings(state, { language: next });
   persist();
-  applyI18n();
-  renderCards();
-  renderDay();
-  renderWeek();
+  rerenderAll();
 });
 
 // ---------- Backup ----------
@@ -556,15 +691,15 @@ document.getElementById('backup-import-input').addEventListener('change', (e) =>
       e.target.value = '';
       return;
     }
-    showConfirm(t('backupImportConfirm'), () => {
-      state = { ...core.createInitialState(), ...data };
-      persist();
-      applyI18n();
-      renderCards();
-      renderDay();
-      renderWeek();
-      renderSettings();
-    });
+    showConfirm(
+      t('backupImportConfirm'),
+      () => {
+        state = withLanguage(normalizeState(data));
+        persist();
+        rerenderAll();
+      },
+      t('backupImport'),
+    );
     e.target.value = '';
   };
   reader.readAsText(file);
@@ -595,9 +730,5 @@ document.getElementById('first-use-dismiss').addEventListener('click', () => {
 
 // ---------- boot ----------
 
-applyI18n();
-renderDossierHistory();
-renderCards();
-renderDay();
-renderSettings();
+rerenderAll();
 maybeShowFirstUseNotice();

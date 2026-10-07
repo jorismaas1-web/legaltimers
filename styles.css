@@ -252,7 +252,9 @@ tbody tr:hover {
 .cell-copy-btn {
   border: none;
   background: none;
-  padding: 0 0.2em;
+  padding: 0.1em 0.35em;
+  margin-left: 0.2em;
+  font-size: 1.15em;
   color: var(--muted);
 }
 
@@ -358,4 +360,61 @@ tbody tr:hover {
   justify-content: flex-end;
   gap: 0.6em;
   margin-top: 1em;
+}
+
+.beta-badge {
+  font-size: 0.6em;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--accent);
+  border: 1px solid var(--accent);
+  border-radius: 4px;
+  padding: 0.1em 0.4em;
+  vertical-align: middle;
+}
+
+.storage-warning {
+  background: var(--banner-bg);
+  border: 1px solid var(--danger);
+  color: var(--danger);
+  border-radius: 8px;
+  padding: 0.7em 1em;
+  margin: 0 0 1em;
+}
+
+.card.is-ready .card-ready {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+.ready-badge {
+  margin-left: 0.5em;
+  font-size: 0.8em;
+  color: var(--accent);
+  border: 1px solid var(--accent);
+  border-radius: 4px;
+  padding: 0 0.35em;
+}
+
+.day-empty {
+  color: var(--muted);
+}
+
+.week-day-btn {
+  border: none;
+  background: none;
+  padding: 0;
+  font-weight: inherit;
+  text-decoration: underline dotted;
+}
+
+.week-day-btn:hover {
+  background: none;
+  color: var(--accent);
+}
+
+button:disabled {
+  opacity: 0.45;
+  cursor: default;
 }
