@@ -31,7 +31,7 @@ test('save() then load() round-trips state', () => {
   const backend = fakeBackend();
   const store = storage.createStorage(backend);
   let state = core.createInitialState();
-  const res = core.addClock(state, { dossier: 'Client BV / 2002100001', activity: 'onderzoek' }, Date.now());
+  const res = core.addClock(state, { dossier: 'Client BV / 2002100001' }, Date.now());
   state = res.state;
 
   store.save(state);

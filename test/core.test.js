@@ -11,10 +11,10 @@ function localMs(y, m, d, h = 0, mi = 0, s = 0) {
 test('starting clock B pauses running clock A, at most one running', () => {
   let state = core.createInitialState();
   const t0 = localMs(2026, 10, 7, 9, 0, 0);
-  let res = core.addClock(state, { dossier: 'A', activity: 'werk' }, t0);
+  let res = core.addClock(state, { dossier: 'A' }, t0);
   state = res.state;
   const idA = res.clockId;
-  res = core.addClock(state, { dossier: 'B', activity: 'werk' }, t0);
+  res = core.addClock(state, { dossier: 'B' }, t0);
   state = res.state;
   const idB = res.clockId;
 
@@ -43,7 +43,7 @@ test('starting clock B pauses running clock A, at most one running', () => {
 test('elapsed time for running clock = accumulated + (now - startedAt), surviving a sleep gap', () => {
   let state = core.createInitialState();
   const t0 = localMs(2026, 10, 7, 9, 0, 0);
-  let res = core.addClock(state, { dossier: 'A', activity: 'werk' }, t0);
+  let res = core.addClock(state, { dossier: 'A' }, t0);
   state = res.state;
   const id = res.clockId;
   state = core.startClock(state, id, t0);
@@ -69,7 +69,7 @@ test('a running segment crossing local midnight is split into two day segments',
 
   // and elapsedForDay attributes the right share to each day
   let state = core.createInitialState();
-  let res = core.addClock(state, { dossier: 'A', activity: 'werk' }, start);
+  let res = core.addClock(state, { dossier: 'A' }, start);
   state = res.state;
   const id = res.clockId;
   state = core.startClock(state, id, start);
@@ -86,7 +86,7 @@ test('a running segment crossing local midnight is split into two day segments',
 test('manual time edit sets an adjustment so the day total equals the entered value', () => {
   let state = core.createInitialState();
   const t0 = localMs(2026, 10, 7, 9, 0, 0);
-  let res = core.addClock(state, { dossier: 'A', activity: 'werk' }, t0);
+  let res = core.addClock(state, { dossier: 'A' }, t0);
   state = res.state;
   const id = res.clockId;
   state = core.startClock(state, id, t0);
@@ -176,7 +176,7 @@ test('aggregateWeek buckets by Mon-Sun and totals per day and per week', () => {
   let state = core.createInitialState();
   // Wednesday 2026-10-07
   const wed = localMs(2026, 10, 7, 9, 0, 0);
-  let res = core.addClock(state, { dossier: 'A', activity: 'werk' }, wed);
+  let res = core.addClock(state, { dossier: 'A' }, wed);
   state = res.state;
   const id = res.clockId;
 
@@ -217,11 +217,11 @@ test('extractDossierNumber takes the last "/"-separated numeric part, else the f
 
 test('buildDayTSV produces header + rows separated by tabs and newlines', () => {
   const tsv = core.buildDayTSV([
-    { date: '2026-10-07', dossier: '2002100001', activity: 'onderzoek', hours: '1.7', description: 'memo' },
+    { date: '2026-10-07', dossier: '2002100001', hours: '1.7', description: 'memo' },
   ]);
   const lines = tsv.split('\n');
-  assert.equal(lines[0], 'date\tdossier\tactivity\thours\tdescription');
-  assert.equal(lines[1], '2026-10-07\t2002100001\tonderzoek\t1.7\tmemo');
+  assert.equal(lines[0], 'date\tdossier\thours\tdescription');
+  assert.equal(lines[1], '2026-10-07\t2002100001\t1.7\tmemo');
 });
 
 // ---- long-run detection ----
@@ -238,7 +238,7 @@ test('isLongRun flags runs over 3 hours or that crossed midnight', () => {
 test('removeClock archives the card but keeps past hours for day and week views', () => {
   let state = core.createInitialState();
   const mon = localMs(2026, 10, 5, 9, 0, 0);
-  const res = core.addClock(state, { dossier: 'A / 1', activity: 'werk' }, mon);
+  const res = core.addClock(state, { dossier: 'A / 1' }, mon);
   state = res.state;
   const id = res.clockId;
   state = core.startClock(state, id, mon);
@@ -257,11 +257,11 @@ test('removeClock archives the card but keeps past hours for day and week views'
 test('pruneOlderThan drops archived clocks that have no history left', () => {
   let state = core.createInitialState();
   const old = localMs(2026, 1, 5, 9, 0, 0);
-  const res = core.addClock(state, { dossier: 'Old', activity: '' }, old);
+  const res = core.addClock(state, { dossier: 'Old' }, old);
   state = core.startClock(res.state, res.clockId, old);
   state = core.pauseRunning(state, old + 600000);
   state = core.removeClock(state, res.clockId, old + 600000);
-  const keep = core.addClock(state, { dossier: 'Keep', activity: '' }, old);
+  const keep = core.addClock(state, { dossier: 'Keep' }, old);
   state = core.pruneOlderThan(keep.state, 4, localMs(2026, 10, 7, 12, 0, 0));
   assert.deepEqual(state.clocks.map((c) => c.dossier), ['Keep']);
 });

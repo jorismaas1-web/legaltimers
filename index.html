@@ -49,7 +49,6 @@
       <thead>
         <tr>
           <th data-i18n="colDossier">Dossier</th>
-          <th data-i18n="colActivity">Verrichting</th>
           <th data-i18n="colExactTime">Exacte tijd</th>
           <th data-i18n="colRoundedHours">Afgeronde uren</th>
           <th data-i18n="colDescription">Omschrijving</th>
@@ -81,10 +80,6 @@
 <section id="view-settings" class="view">
   <h2 data-i18n="settingsTitle">Instellingen</h2>
   <form id="settings-form" class="settings-form">
-    <label class="field">
-      <span data-i18n="settingsDefaultActivity">Standaard verrichting</span>
-      <input type="text" id="settings-default-activity" name="defaultActivity">
-    </label>
     <label class="field">
       <span data-i18n="settingsRoundUnit">Afrondingseenheid</span>
       <select id="settings-round-unit" name="roundUnit">
@@ -152,7 +147,6 @@
 <template id="card-template">
   <article class="card">
     <input type="text" class="card-dossier" list="dossier-history">
-    <input type="text" class="card-activity">
     <div class="card-time-row">
       <input type="text" class="card-time" inputmode="numeric">
       <button type="button" class="card-startpause"></button>

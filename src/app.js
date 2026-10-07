@@ -96,26 +96,19 @@ function createCardElement(clock) {
   node.dataset.clockId = clock.id;
 
   const dossierInput = node.querySelector('.card-dossier');
-  const activityInput = node.querySelector('.card-activity');
   const timeInput = node.querySelector('.card-time');
   const startPauseBtn = node.querySelector('.card-startpause');
   const readyBtn = node.querySelector('.card-ready');
   const deleteBtn = node.querySelector('.card-delete');
 
   dossierInput.placeholder = t('dossierPlaceholder');
-  activityInput.placeholder = t('activityPlaceholder');
   dossierInput.value = clock.dossier;
-  activityInput.value = clock.activity;
 
   dossierInput.addEventListener('change', () => {
     state = core.updateClock(state, clock.id, { dossier: dossierInput.value });
     state = core.recordDossierUsed(state, dossierInput.value);
     persist();
     renderDossierHistory();
-  });
-  activityInput.addEventListener('change', () => {
-    state = core.updateClock(state, clock.id, { activity: activityInput.value });
-    persist();
   });
   timeInput.addEventListener('change', () => {
     const ms = core.parseTimeInput(timeInput.value);
@@ -141,7 +134,7 @@ function createCardElement(clock) {
     });
   });
 
-  cardEls.set(clock.id, { node, dossierInput, activityInput, timeInput, startPauseBtn, readyBtn });
+  cardEls.set(clock.id, { node, dossierInput, timeInput, startPauseBtn, readyBtn });
   return node;
 }
 
@@ -170,7 +163,6 @@ function renderCards() {
       grid.appendChild(entry.node);
     }
     if (document.activeElement !== entry.dossierInput) entry.dossierInput.value = clock.dossier;
-    if (document.activeElement !== entry.activityInput) entry.activityInput.value = clock.activity;
     entry.node.classList.toggle('is-running', !!(state.running && state.running.clockId === clock.id));
     entry.startPauseBtn.textContent = state.running && state.running.clockId === clock.id ? t('pause') : t('start');
     entry.readyBtn.textContent = t('ready');
@@ -204,7 +196,7 @@ function renderDossierHistory() {
 }
 
 document.getElementById('new-timer-btn').addEventListener('click', () => {
-  const res = core.addClock(state, { dossier: '', activity: state.settings.defaultActivity }, now());
+  const res = core.addClock(state, { dossier: '' }, now());
   state = res.state;
   focusNewDossierFor = res.clockId;
   persist();
@@ -280,7 +272,7 @@ function tick() {
     const clock = state.clocks.find((c) => c.id === state.running.clockId);
     const elapsedToday = core.elapsedForDay(state, state.running.clockId, day, n);
     const label = core.formatHM(elapsedToday / 3600000);
-    document.title = `▶ ${label} · ${clock ? clock.dossier || clock.activity || '' : ''}`.trim();
+    document.title = `▶ ${label} · ${clock ? clock.dossier : ''}`.trim();
   } else {
     document.title = t('appTitle');
   }
@@ -328,8 +320,6 @@ function renderDay() {
     const tdDossier = document.createElement('td');
     tdDossier.append(row.dossier, copyButton(dossierNumber, t('copyDossier')));
 
-    const tdActivity = document.createElement('td');
-    tdActivity.textContent = row.activity;
 
     const tdExact = document.createElement('td');
     tdExact.textContent = core.formatHMS(row.elapsedMs);
@@ -360,7 +350,7 @@ function renderDay() {
     });
     tdOvergenomen.appendChild(checkbox);
 
-    tr.append(tdDossier, tdActivity, tdExact, tdHours, tdDescription, tdOvergenomen);
+    tr.append(tdDossier, tdExact, tdHours, tdDescription, tdOvergenomen);
     tr.addEventListener('click', (e) => {
       if (e.target.closest('input, button, a')) return;
       state = core.setOvergenomen(state, row.clockId, day, !row.overgenomen);
@@ -398,7 +388,7 @@ document.getElementById('copy-day-table-btn').addEventListener('click', () => {
   const rows = core.getDaySummaryRows(state, day, n).map((row) => {
     const roundedHours = core.roundHoursMs(row.elapsedMs, state.settings.roundUnitMinutes, state.settings.roundMode);
     const hoursDisplay = formatHoursForDisplay(roundedHours);
-    return { date: day, dossier: row.dossier, activity: row.activity, hours: hoursDisplay, description: row.description };
+    return { date: day, dossier: row.dossier, hours: hoursDisplay, description: row.description };
   });
   copyToClipboard(core.buildDayTSV(rows));
 });
@@ -491,17 +481,12 @@ document.getElementById('week-this-btn').addEventListener('click', () => {
 // ---------- Settings view ----------
 
 function renderSettings() {
-  document.getElementById('settings-default-activity').value = state.settings.defaultActivity || '';
   document.getElementById('settings-round-unit').value = String(state.settings.roundUnitMinutes);
   document.getElementById('settings-round-mode').value = state.settings.roundMode;
   document.getElementById('settings-hours-format').value = state.settings.hoursFormat;
   document.getElementById('settings-delete-weeks').value = state.settings.deleteOlderThanWeeks || '';
 }
 
-document.getElementById('settings-default-activity').addEventListener('change', (e) => {
-  state = core.updateSettings(state, { defaultActivity: e.target.value });
-  persist();
-});
 document.getElementById('settings-round-unit').addEventListener('change', (e) => {
   state = core.updateSettings(state, { roundUnitMinutes: Number(e.target.value) });
   persist();

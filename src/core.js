@@ -8,14 +8,14 @@ export const SCHEMA_VERSION = 1;
 //
 // state = {
 //   schemaVersion: 1,
-//   clocks: [{ id, dossier, activity, createdAt, archived? }],
+//   clocks: [{ id, dossier, createdAt, archived? }],
 //   segments: [{ clockId, start, end }],      // finalized, each within one local day
 //   running: { clockId, startedAt } | null,   // at most one clock runs
 //   adjustments: { "<clockId>__<day>": deltaMs },
 //   dayData: { "<clockId>__<day>": { description, overgenomen, ready } },
 //   longRunDecisions: { "<clockId>__<startedAt>": "keep" | { correctedEnd } },
 //   settings: {
-//     roundUnitMinutes, roundMode, hoursFormat, defaultActivity,
+//     roundUnitMinutes, roundMode, hoursFormat,
 //     language, deleteOlderThanWeeks
 //   },
 //   nextClockSeq: number
@@ -34,7 +34,6 @@ export function createInitialState() {
       roundUnitMinutes: 6,
       roundMode: 'up',
       hoursFormat: 'decimal',
-      defaultActivity: '',
       language: null,
       deleteOlderThanWeeks: null,
     },
@@ -109,11 +108,11 @@ function adjKey(clockId, day) {
 
 // ---------- clock CRUD ----------
 
-export function addClock(state, { dossier = '', activity = '' }, now, id) {
+export function addClock(state, { dossier = '' }, now, id) {
   const next = clone(state);
   const clockId = id || `c${next.nextClockSeq}`;
   next.nextClockSeq = next.nextClockSeq + 1;
-  next.clocks.push({ id: clockId, dossier, activity, createdAt: now });
+  next.clocks.push({ id: clockId, dossier, createdAt: now });
   return { state: next, clockId };
 }
 
@@ -270,7 +269,6 @@ export function getDaySummaryRows(state, day, now) {
     rows.push({
       clockId: c.id,
       dossier: c.dossier,
-      activity: c.activity,
       elapsedMs: elapsed,
       description: dd.description,
       overgenomen: dd.overgenomen,
@@ -374,10 +372,10 @@ export function extractDossierNumber(dossierLine) {
 // ---------- TSV ----------
 
 export function buildDayTSV(rows) {
-  const header = ['date', 'dossier', 'activity', 'hours', 'description'];
+  const header = ['date', 'dossier', 'hours', 'description'];
   const lines = [header.join('\t')];
   for (const r of rows) {
-    lines.push([r.date, r.dossier, r.activity, r.hours, r.description].join('\t'));
+    lines.push([r.date, r.dossier, r.hours, r.description].join('\t'));
   }
   return lines.join('\n');
 }
@@ -396,7 +394,7 @@ export function aggregateWeek(state, weekStartMs, now, settings) {
     const total = round2(hours.reduce((a, b) => a + b, 0));
     const hasAny = hours.some((h) => h > 0);
     if (!hasAny) continue;
-    rows.push({ clockId: c.id, dossier: c.dossier, activity: c.activity, hours, total });
+    rows.push({ clockId: c.id, dossier: c.dossier, hours, total });
   }
 
   const dayTotals = days.map((_, i) => round2(rows.reduce((a, r) => a + r.hours[i], 0)));

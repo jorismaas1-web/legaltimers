@@ -22,7 +22,6 @@ Legal Sense "Timers" (chessclocks) page. Agreed in a grilling session on 2026-10
 
 - Dossier line: one free-text field, e.g. "Client BV / Matter / 2002100001".
   Autocomplete (datalist is fine) from dossiers used before, most recent first.
-- Activity: free text, prefilled from a user default (settings), editable per card.
 - Time: shown as hh:mm:ss, editable by hand (parse h:mm, h:mm:ss, decimal "1.5").
 - Buttons: Start / Pause, Gereed, delete (✕) with a confirm dialog.
 - Chess-clock rule: at most one clock runs. Starting one immediately pauses the
@@ -37,7 +36,7 @@ Legal Sense "Timers" (chessclocks) page. Agreed in a grilling session on 2026-10
 - Time is logged per local calendar day as segments `{clockId, start, end}`.
   A segment crossing midnight is split at local midnight.
 - New day: card time displays 0:00:00 (today's total for that clock). Cards
-  (dossier + activity) persist across days.
+  (dossier) persist across days.
 - Manual time edits store a per-day adjustment for that clock so that today's
   total equals the entered value.
 - Long-run check: when a clock has run > 3 hours continuously, or ran past
@@ -49,17 +48,17 @@ Legal Sense "Timers" (chessclocks) page. Agreed in a grilling session on 2026-10
 - Gereed: pauses the clock (if running) and marks that clock's time for today as
   ready in the day summary. The card stays for tomorrow.
 - Day summary: one row per clock with time today > 0:
-  dossier, activity, exact time (h:mm:ss), rounded hours, description (free text,
+  dossier, exact time (h:mm:ss), rounded hours, description (free text,
   stored per day per clock), "overgenomen" checkbox.
 - Rounding: default 6-minute units, rounded up (7 min -> 0.2 h). Setting:
   unit 1/5/6/10/15 min, mode up/nearest. Display format setting: decimal (1.7)
   or h:mm (1:42). 0 seconds rounds to 0.
 - Copy buttons per row, in AFAS field order (Project, Aantal, Toelichting;
-  werksoort is not copied): dossier number (the last "/"-separated part if it
+  werksoort is not copied; there is no activity field at all): dossier number (the last "/"-separated part if it
   is numeric, else full dossier line), hours (rounded, in chosen format;
   decimal comma when the UI is NL), description.
 - Clicking the row (outside inputs/buttons) toggles "overgenomen".
-- "Kopieer dag als tabel": TSV with header: date, dossier, activity, hours,
+- "Kopieer dag als tabel": TSV with header: date, dossier, hours,
   description.
 - Total today shown at the top of the page.
 
@@ -94,7 +93,7 @@ Legal Sense "Timers" (chessclocks) page. Agreed in a grilling session on 2026-10
 
 - NL and EN, toggle in header; default from `navigator.language` (nl* -> NL,
   else EN); choice stored locally. All strings in one dictionary module.
-- Keep Legal Sense terms in NL: "Gereed", "Verrichting", "Tijdsoverzicht vandaag",
+- Keep Legal Sense terms in NL: "Gereed", "Tijdsoverzicht vandaag",
   "Nieuwe timer".
 
 ## Code layout
