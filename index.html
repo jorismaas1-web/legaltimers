@@ -1,0 +1,169 @@
+<!doctype html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'none'; font-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'">
+<title>Legal Timers</title>
+<link rel="icon" href="data:,">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<header class="app-header">
+  <h1 class="app-title" data-i18n="appTitle">Legal Timers</h1>
+  <div class="header-total">
+    <span data-i18n="todayTotal">Totaal vandaag</span>:
+    <strong id="header-today-total">0:00:00</strong>
+  </div>
+  <button type="button" id="lang-toggle" class="lang-toggle" aria-label="Taal / Language">NL</button>
+</header>
+
+<nav class="tabs" id="tabs" aria-label="Views">
+  <button type="button" class="tab-btn is-active" data-tab="timers" data-i18n="tabTimers">Timers</button>
+  <button type="button" class="tab-btn" data-tab="day" data-i18n="tabDay">Dag</button>
+  <button type="button" class="tab-btn" data-tab="week" data-i18n="tabWeek">Week</button>
+  <button type="button" class="tab-btn" data-tab="settings" data-i18n="tabSettings">Instellingen</button>
+</nav>
+
+<main>
+
+<section id="view-timers" class="view is-active">
+  <div class="toolbar">
+    <button type="button" id="new-timer-btn" data-i18n="newTimer">Nieuwe timer</button>
+    <button type="button" id="pause-all-btn" data-i18n="pauseAll">Alles pauzeren</button>
+  </div>
+  <p class="shortcuts-help" data-i18n="shortcutsHelp">1-9 start/wissel timer, spatie pauzeert alles, N nieuwe timer.</p>
+  <div id="long-run-banner" class="long-run-banner" hidden>
+    <span data-i18n="longRunBanner">Liep deze echt door?</span>
+    <button type="button" id="long-run-keep" data-i18n="longRunKeep">Klopt, laten staan</button>
+    <button type="button" id="long-run-correct" data-i18n="longRunCorrect">Corrigeer eindtijd</button>
+  </div>
+  <div id="cards-grid" class="cards-grid"></div>
+  <datalist id="dossier-history"></datalist>
+</section>
+
+<section id="view-day" class="view">
+  <h2 data-i18n="daySummaryTitle">Tijdsoverzicht vandaag</h2>
+  <div class="table-scroll">
+    <table id="day-table" class="day-table">
+      <thead>
+        <tr>
+          <th data-i18n="colDossier">Dossier</th>
+          <th data-i18n="colActivity">Verrichting</th>
+          <th data-i18n="colExactTime">Exacte tijd</th>
+          <th data-i18n="colRoundedHours">Afgeronde uren</th>
+          <th data-i18n="colDescription">Omschrijving</th>
+          <th data-i18n="colOvergenomen">Overgenomen</th>
+        </tr>
+      </thead>
+      <tbody id="day-table-body"></tbody>
+    </table>
+  </div>
+  <button type="button" id="copy-day-table-btn" data-i18n="copyDayTable">Kopieer dag als tabel</button>
+</section>
+
+<section id="view-week" class="view">
+  <div class="toolbar">
+    <button type="button" id="week-prev-btn" data-i18n="weekPrev">Vorige week</button>
+    <button type="button" id="week-this-btn" data-i18n="weekThis">Deze week</button>
+    <button type="button" id="week-next-btn" data-i18n="weekNext">Volgende week</button>
+    <span id="week-range-label" class="week-range-label"></span>
+  </div>
+  <div class="table-scroll">
+    <table id="week-table" class="week-table">
+      <thead id="week-table-head"></thead>
+      <tbody id="week-table-body"></tbody>
+      <tfoot id="week-table-foot"></tfoot>
+    </table>
+  </div>
+</section>
+
+<section id="view-settings" class="view">
+  <h2 data-i18n="settingsTitle">Instellingen</h2>
+  <form id="settings-form" class="settings-form">
+    <label class="field">
+      <span data-i18n="settingsDefaultActivity">Standaard verrichting</span>
+      <input type="text" id="settings-default-activity" name="defaultActivity">
+    </label>
+    <label class="field">
+      <span data-i18n="settingsRoundUnit">Afrondingseenheid</span>
+      <select id="settings-round-unit" name="roundUnit">
+        <option value="1">1 min</option>
+        <option value="5">5 min</option>
+        <option value="6">6 min</option>
+        <option value="10">10 min</option>
+        <option value="15">15 min</option>
+      </select>
+    </label>
+    <label class="field">
+      <span data-i18n="settingsRoundMode">Afrondingsmodus</span>
+      <select id="settings-round-mode" name="roundMode">
+        <option value="up" data-i18n="roundModeUp">Omhoog</option>
+        <option value="nearest" data-i18n="roundModeNearest">Dichtstbijzijnde</option>
+      </select>
+    </label>
+    <label class="field">
+      <span data-i18n="settingsHoursFormat">Weergaveformaat uren</span>
+      <select id="settings-hours-format" name="hoursFormat">
+        <option value="decimal" data-i18n="formatDecimal">Decimaal (1,7)</option>
+        <option value="hm" data-i18n="formatHM">Uren:minuten (1:42)</option>
+      </select>
+    </label>
+    <label class="field">
+      <span data-i18n="settingsDeleteOld">Verwijder alles ouder dan (weken)</span>
+      <input type="number" id="settings-delete-weeks" name="deleteWeeks" min="1" step="1">
+    </label>
+    <button type="button" id="settings-delete-weeks-btn" data-i18n="settingsDeleteOldApply">Opschonen</button>
+  </form>
+
+  <h2 data-i18n="backupTitle">Backup</h2>
+  <div class="toolbar">
+    <button type="button" id="backup-export-btn" data-i18n="backupExport">Exporteer backup</button>
+    <label class="file-label" data-i18n="backupImport">Importeer backup
+      <input type="file" id="backup-import-input" accept="application/json">
+    </label>
+  </div>
+  <p id="backup-error" class="backup-error" hidden></p>
+</section>
+
+</main>
+
+<p class="footer-notice">
+  <span data-i18n="privacyLine">Alles blijft in je browser. Deze site verstuurt niets.</span>
+  <br>
+  <span data-i18n="privacyHow">Controleren: open de Network-tab van de browser (DevTools) en herlaad de pagina; er verschijnt geen enkel verzoek.</span>
+</p>
+
+<div id="first-use-notice" class="first-use-notice" hidden>
+  <p data-i18n="firstUseNotice">Alles blijft in je browser. Wis je je browsergegevens, dan ben je je tijden kwijt. Maak af en toe een backup.</p>
+  <button type="button" id="first-use-dismiss">OK</button>
+</div>
+
+<div id="confirm-dialog" class="confirm-dialog" hidden>
+  <div class="confirm-box">
+    <p id="confirm-message"></p>
+    <div class="confirm-actions">
+      <button type="button" id="confirm-ok" data-i18n="delete">Verwijderen</button>
+      <button type="button" id="confirm-cancel" data-i18n="cancel">Annuleren</button>
+    </div>
+  </div>
+</div>
+
+<template id="card-template">
+  <article class="card">
+    <input type="text" class="card-dossier" list="dossier-history">
+    <input type="text" class="card-activity">
+    <div class="card-time-row">
+      <input type="text" class="card-time" inputmode="numeric">
+      <button type="button" class="card-startpause"></button>
+    </div>
+    <div class="card-actions">
+      <button type="button" class="card-ready" data-i18n="ready">Gereed</button>
+      <button type="button" class="card-delete" aria-label="Verwijderen">✕</button>
+    </div>
+  </article>
+</template>
+
+<script type="module" src="src/app.js"></script>
+</body>
+</html>
