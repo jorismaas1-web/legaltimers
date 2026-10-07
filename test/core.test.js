@@ -265,3 +265,17 @@ test('pruneOlderThan drops archived clocks that have no history left', () => {
   state = core.pruneOlderThan(keep.state, 4, localMs(2026, 10, 7, 12, 0, 0));
   assert.deepEqual(state.clocks.map((c) => c.dossier), ['Keep']);
 });
+
+// ---- AFAS-friendly copy values ----
+
+test('formatDecimalHours uses the given decimal separator', () => {
+  assert.equal(core.formatDecimalHours(1.7, ','), '1,7');
+  assert.equal(core.formatDecimalHours(2, ','), '2');
+  assert.equal(core.formatDecimalHours(1.25), '1.25');
+});
+
+test('extractActivityCode takes a trailing "(code)", else the full activity', () => {
+  assert.equal(core.extractActivityCode('Fiscaal advies (963)'), '963');
+  assert.equal(core.extractActivityCode('Fiscaal advies'), 'Fiscaal advies');
+  assert.equal(core.extractActivityCode(''), '');
+});

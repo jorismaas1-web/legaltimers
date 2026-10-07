@@ -311,8 +311,8 @@ export function roundHoursMs(ms, unitMinutes, mode) {
 
 // ---------- formatting ----------
 
-export function formatDecimalHours(h) {
-  return String(round2(h));
+export function formatDecimalHours(h, decimalSeparator = '.') {
+  return String(round2(h)).replace('.', decimalSeparator);
 }
 
 export function formatHM(h) {
@@ -358,6 +358,13 @@ export function parseTimeInput(str) {
 }
 
 // ---------- dossier number extraction ----------
+
+// AFAS finds a werksoort by its code, so "Fiscaal advies (963)" copies as "963".
+export function extractActivityCode(activity) {
+  const line = (activity || '').trim();
+  const m = line.match(/\(([^()]+)\)\s*$/);
+  return m ? m[1].trim() : line;
+}
 
 export function extractDossierNumber(dossierLine) {
   const line = (dossierLine || '').trim();

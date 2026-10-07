@@ -322,14 +322,14 @@ function renderDay() {
     tr.classList.toggle('row-overgenomen', row.overgenomen);
 
     const roundedHours = core.roundHoursMs(row.elapsedMs, state.settings.roundUnitMinutes, state.settings.roundMode);
-    const hoursDisplay = state.settings.hoursFormat === 'hm' ? core.formatHM(roundedHours) : core.formatDecimalHours(roundedHours);
+    const hoursDisplay = formatHoursForDisplay(roundedHours);
     const dossierNumber = core.extractDossierNumber(row.dossier);
 
     const tdDossier = document.createElement('td');
     tdDossier.append(row.dossier, copyButton(dossierNumber, t('copyDossier')));
 
     const tdActivity = document.createElement('td');
-    tdActivity.textContent = row.activity;
+    tdActivity.append(row.activity, copyButton(core.extractActivityCode(row.activity), t('copyActivity')));
 
     const tdExact = document.createElement('td');
     tdExact.textContent = core.formatHMS(row.elapsedMs);
@@ -397,7 +397,7 @@ document.getElementById('copy-day-table-btn').addEventListener('click', () => {
   const n = now();
   const rows = core.getDaySummaryRows(state, day, n).map((row) => {
     const roundedHours = core.roundHoursMs(row.elapsedMs, state.settings.roundUnitMinutes, state.settings.roundMode);
-    const hoursDisplay = state.settings.hoursFormat === 'hm' ? core.formatHM(roundedHours) : core.formatDecimalHours(roundedHours);
+    const hoursDisplay = formatHoursForDisplay(roundedHours);
     return { date: day, dossier: row.dossier, activity: row.activity, hours: hoursDisplay, description: row.description };
   });
   copyToClipboard(core.buildDayTSV(rows));
@@ -471,7 +471,8 @@ function renderWeek() {
 }
 
 function formatHoursForDisplay(h) {
-  return state.settings.hoursFormat === 'hm' ? core.formatHM(h) : core.formatDecimalHours(h);
+  if (state.settings.hoursFormat === 'hm') return core.formatHM(h);
+  return core.formatDecimalHours(h, state.settings.language === 'nl' ? ',' : '.');
 }
 
 document.getElementById('week-prev-btn').addEventListener('click', () => {

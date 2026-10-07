@@ -54,8 +54,11 @@ Legal Sense "Timers" (chessclocks) page. Agreed in a grilling session on 2026-10
 - Rounding: default 6-minute units, rounded up (7 min -> 0.2 h). Setting:
   unit 1/5/6/10/15 min, mode up/nearest. Display format setting: decimal (1.7)
   or h:mm (1:42). 0 seconds rounds to 0.
-- Copy buttons per row: dossier number (the last "/"-separated part if it is
-  numeric, else full dossier line), hours (rounded, in chosen format), description.
+- Copy buttons per row, in AFAS field order (Project, Werksoort, Aantal,
+  Toelichting): dossier number (the last "/"-separated part if it is numeric,
+  else full dossier line), activity code (trailing "(963)" if present, else the
+  full activity), hours (rounded, in chosen format; decimal comma when the UI
+  is NL), description.
 - Clicking the row (outside inputs/buttons) toggles "overgenomen".
 - "Kopieer dag als tabel": TSV with header: date, dossier, activity, hours,
   description.
