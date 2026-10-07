@@ -8,7 +8,7 @@ export const SCHEMA_VERSION = 1;
 //
 // state = {
 //   schemaVersion: 1,
-//   clocks: [{ id, dossier, activity, createdAt }],
+//   clocks: [{ id, dossier, activity, createdAt, archived? }],
 //   segments: [{ clockId, start, end }],      // finalized, each within one local day
 //   running: { clockId, startedAt } | null,   // at most one clock runs
 //   adjustments: { "<clockId>__<day>": deltaMs },
@@ -117,18 +117,17 @@ export function addClock(state, { dossier = '', activity = '' }, now, id) {
   return { state: next, clockId };
 }
 
-export function removeClock(state, clockId) {
-  const next = clone(state);
-  next.clocks = next.clocks.filter((c) => c.id !== clockId);
-  next.segments = next.segments.filter((s) => s.clockId !== clockId);
-  if (next.running && next.running.clockId === clockId) next.running = null;
-  for (const k of Object.keys(next.adjustments)) {
-    if (k.startsWith(`${clockId}__`)) delete next.adjustments[k];
-  }
-  for (const k of Object.keys(next.dayData)) {
-    if (k.startsWith(`${clockId}__`)) delete next.dayData[k];
-  }
+// Archives a clock: the card disappears from the timers grid, but its
+// segments, adjustments and day data stay so past days and weeks still add up.
+export function removeClock(state, clockId, now) {
+  const next =
+    state.running && state.running.clockId === clockId ? pauseRunning(state, now) : clone(state);
+  next.clocks = next.clocks.map((c) => (c.id === clockId ? { ...c, archived: true } : c));
   return next;
+}
+
+export function activeClocks(state) {
+  return state.clocks.filter((c) => !c.archived);
 }
 
 export function updateClock(state, clockId, patch) {
@@ -152,7 +151,8 @@ export function updateSettings(state, patch) {
 }
 
 // Removes segments, adjustments and day data for days older than
-// `weeks` weeks ago (local time). Clock cards themselves are kept.
+// `weeks` weeks ago (local time). Active clock cards are kept; archived
+// clocks with no history left are dropped.
 export function pruneOlderThan(state, weeks, now) {
   const next = clone(state);
   const cutoff = addDays(startOfLocalDay(now), -weeks * 7);
@@ -165,6 +165,11 @@ export function pruneOlderThan(state, weeks, now) {
     const day = key.split('__')[1];
     if (day && new Date(`${day}T00:00:00`).getTime() < cutoff) delete next.dayData[key];
   }
+  const used = new Set(next.segments.map((s) => s.clockId));
+  for (const key of [...Object.keys(next.adjustments), ...Object.keys(next.dayData)]) {
+    used.add(key.split('__')[0]);
+  }
+  next.clocks = next.clocks.filter((c) => !c.archived || used.has(c.id));
   return next;
 }
 

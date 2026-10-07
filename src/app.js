@@ -135,7 +135,7 @@ function createCardElement(clock) {
   });
   deleteBtn.addEventListener('click', () => {
     showConfirm(t('confirmDeleteTimer'), () => {
-      state = core.removeClock(state, clock.id);
+      state = core.removeClock(state, clock.id, now());
       persist();
       renderCards();
     });
@@ -159,7 +159,7 @@ function renderCards() {
   const grid = document.getElementById('cards-grid');
   const seen = new Set();
 
-  for (const clock of state.clocks) {
+  for (const clock of core.activeClocks(state)) {
     seen.add(clock.id);
     let entry = cardEls.get(clock.id);
     if (!entry) {
@@ -265,7 +265,7 @@ function tick() {
   const day = today();
   const n = now();
 
-  for (const clock of state.clocks) {
+  for (const clock of core.activeClocks(state)) {
     const entry = cardEls.get(clock.id);
     if (!entry) continue;
     if (document.activeElement !== entry.timeInput) {
@@ -296,7 +296,7 @@ document.addEventListener('keydown', (e) => {
   if (isTypingTarget(document.activeElement)) return;
   if (e.key >= '1' && e.key <= '9') {
     const idx = Number(e.key) - 1;
-    const clock = state.clocks[idx];
+    const clock = core.activeClocks(state)[idx];
     if (clock) toggleStartPause(clock.id);
   } else if (e.key === ' ') {
     e.preventDefault();

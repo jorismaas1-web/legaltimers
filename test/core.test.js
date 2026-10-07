@@ -232,3 +232,36 @@ test('isLongRun flags runs over 3 hours or that crossed midnight', () => {
   assert.equal(core.isLongRun(start, localMs(2026, 10, 7, 12, 30, 0)), true); // > 3h
   assert.equal(core.isLongRun(start, localMs(2026, 10, 8, 0, 30, 0)), true); // past midnight, < 3h
 });
+
+// ---- removing a timer keeps its history ----
+
+test('removeClock archives the card but keeps past hours for day and week views', () => {
+  let state = core.createInitialState();
+  const mon = localMs(2026, 10, 5, 9, 0, 0);
+  const res = core.addClock(state, { dossier: 'A / 1', activity: 'werk' }, mon);
+  state = res.state;
+  const id = res.clockId;
+  state = core.startClock(state, id, mon);
+  const thu = localMs(2026, 10, 8, 10, 0, 0);
+  state = core.pauseRunning(state, localMs(2026, 10, 5, 10, 0, 0));
+  state = core.startClock(state, id, thu);
+
+  state = core.removeClock(state, id, localMs(2026, 10, 8, 10, 30, 0));
+
+  assert.equal(state.running, null, 'running clock is paused on removal');
+  assert.deepEqual(core.activeClocks(state).map((c) => c.id), []);
+  assert.equal(core.elapsedForDay(state, id, core.dayKey(mon), thu), 3600000);
+  assert.equal(core.elapsedForDay(state, id, core.dayKey(thu), thu + 3600000), 1800000);
+});
+
+test('pruneOlderThan drops archived clocks that have no history left', () => {
+  let state = core.createInitialState();
+  const old = localMs(2026, 1, 5, 9, 0, 0);
+  const res = core.addClock(state, { dossier: 'Old', activity: '' }, old);
+  state = core.startClock(res.state, res.clockId, old);
+  state = core.pauseRunning(state, old + 600000);
+  state = core.removeClock(state, res.clockId, old + 600000);
+  const keep = core.addClock(state, { dossier: 'Keep', activity: '' }, old);
+  state = core.pruneOlderThan(keep.state, 4, localMs(2026, 10, 7, 12, 0, 0));
+  assert.deepEqual(state.clocks.map((c) => c.dossier), ['Keep']);
+});
