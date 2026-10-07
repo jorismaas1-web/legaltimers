@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import * as core from '../src/core.js';
+import * as core from '../public/src/core.js';
 
 function localMs(y, m, d, h = 0, mi = 0, s = 0) {
   return new Date(y, m - 1, d, h, mi, s, 0).getTime();

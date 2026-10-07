@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import * as storage from '../src/storage.js';
-import * as core from '../src/core.js';
+import * as storage from '../public/src/storage.js';
+import * as core from '../public/src/core.js';
 
 function fakeBackend(initial = {}) {
   const map = new Map(Object.entries(initial));

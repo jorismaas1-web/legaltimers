@@ -18,11 +18,11 @@ a while (Instellingen / Settings -> Backup).
 
 ## Run locally
 
-No build step. Serve the folder over HTTP (the page uses ES modules, which
-browsers refuse to load from a plain `file://` URL):
+No build step. Serve the `public/` folder over HTTP (the page uses ES
+modules, which browsers refuse to load from a plain `file://` URL):
 
 ```bash
-python3 -m http.server
+python3 -m http.server -d public
 ```
 
 Then open `http://localhost:8000`.
@@ -33,18 +33,25 @@ Then open `http://localhost:8000`.
 node --test
 ```
 
-Tests cover the pure logic in `src/core.js` (chess-clock rule, elapsed
+Tests cover the pure logic in `public/src/core.js` (chess-clock rule, elapsed
 time, midnight splitting, rounding, parsing, week aggregation, and so on)
-and the storage load/save and backup validation in `src/storage.js`.
+and the storage load/save and backup validation in `public/src/storage.js`.
 
 ## Deploy
 
-Static site on Cloudflare Pages, no build step. The `_headers` file ships
-the Content Security Policy and other security headers.
+Static site on Cloudflare Pages, connected to this GitHub repo: every push
+to `main` deploys to production, other branches get a preview URL. Pages
+settings: no framework preset, no build command, build output directory
+`public`. Only `public/` is served; docs and tests are not. The
+`public/_headers` file ships the Content Security Policy and other security
+headers.
 
 ## Code layout
 
+Everything that is served lives in `public/`:
+
 - `index.html`, `styles.css` - markup and styling.
+- `_headers` - CSP and security headers for Cloudflare Pages.
 - `src/app.js` - DOM and UI wiring.
 - `src/core.js` - pure logic, no DOM or storage access, testable in
   isolation.

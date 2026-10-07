@@ -113,7 +113,8 @@ Legal Sense "Timers" (chessclocks) page. Agreed in a grilling session on 2026-10
 
 ## Code layout
 
-- `index.html`, `styles.css`, `src/app.js` (DOM/UI), `src/core.js` (pure logic:
+- Served files live in `public/` (Pages build output directory):
+  `index.html`, `styles.css`, `_headers`, `src/app.js` (DOM/UI), `src/core.js` (pure logic:
   clock state transitions, segments, day split, rounding, week aggregation,
   parsing/formatting), `src/storage.js` (localStorage load/save + schema version),
   `src/i18n.js`.
