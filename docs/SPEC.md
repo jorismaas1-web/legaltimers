@@ -22,12 +22,16 @@ Legal Sense "Timers" (chessclocks) page. Agreed in a grilling session on 2026-10
 
 - Dossier line: one free-text field, e.g. "Client BV / Matter / 2002100001".
   Autocomplete (datalist is fine) from dossiers used before, most recent first.
-- Time: shown as hh:mm:ss, editable by hand (parse h:mm, h:mm:ss, decimal "1.5").
+- Time: shown as hh:mm:ss, editable by hand (parse h:mm, h:mm:ss, decimal "1.5"
+  or "1,5").
 - Buttons: Start / Pause, Gereed, delete (✕) with a confirm dialog.
 - Chess-clock rule: at most one clock runs. Starting one immediately pauses the
   running one. No confirmation.
 - "Pause all" button for breaks.
 - "New timer" adds an empty card at the end, dossier field focused.
+- Multiple tabs: a tab picks up the state another tab saved (storage event), so
+  two open tabs never overwrite each other.
+- If the browser refuses local storage, a warning says times are not saved.
 
 ## Time model
 
@@ -40,14 +44,20 @@ Legal Sense "Timers" (chessclocks) page. Agreed in a grilling session on 2026-10
 - Manual time edits store a per-day adjustment for that clock so that today's
   total equals the entered value.
 - Long-run check: when a clock has run > 3 hours continuously, or ran past
-  midnight, show a banner "Liep deze echt door?" with options keep / correct
-  (set end time).
+  midnight, show a banner "Liep deze echt door?" (naming the dossier) with
+  options keep / correct. Correct asks for the clock time you stopped
+  (e.g. 17:30); an end time before the start means the next day, and the end
+  is never later than now.
 
 ## Gereed and day summary
 
 - Gereed: pauses the clock (if running) and marks that clock's time for today as
-  ready in the day summary. The card stays for tomorrow.
-- Day summary: one row per clock with time today > 0:
+  ready: the button shows "Gereed ✓" and the day summary row gets a "Gereed"
+  badge. Starting the clock again the same day clears the mark. The card stays
+  for tomorrow.
+- Day summary: today by default, with previous / today / next day buttons
+  (no future days), so a past day can still be entered. One row per clock with
+  time that day > 0:
   dossier, exact time (h:mm:ss), rounded hours, description (free text,
   stored per day per clock), "overgenomen" checkbox.
 - Rounding: default 6-minute units, rounded up (7 min -> 0.2 h). Setting:
@@ -58,21 +68,24 @@ Legal Sense "Timers" (chessclocks) page. Agreed in a grilling session on 2026-10
   is numeric, else full dossier line), hours (rounded, in chosen format;
   decimal comma when the UI is NL), description.
 - Clicking the row (outside inputs/buttons) toggles "overgenomen".
+- Copy buttons briefly show ✓ (or ✗ if the browser refused).
 - "Kopieer dag als tabel": TSV with header: date, dossier, hours,
-  description.
+  description. Tabs/newlines inside fields become spaces.
 - Total today shown at the top of the page.
 
 ## Week view
 
 - Table: dossiers as rows, Mon-Sun columns, rounded hours per cell, totals per
   day and per week. Previous / next week arrows; "this week" button.
-- Days with rows not yet "overgenomen" get a dot marker.
+- Days with rows not yet "overgenomen" get a dot marker. Clicking a day
+  header opens that day in the Day view.
 - History kept indefinitely; settings has "delete everything older than X weeks".
 
 ## Backup
 
 - Export backup: download a JSON file (via Blob + object URL, no network).
 - Import backup: file input, validate shape, replace data after confirm.
+  Missing settings fall back to defaults.
 - First-use notice: "Alles blijft in je browser. Wis je je browsergegevens, dan
   ben je je tijden kwijt. Maak af en toe een backup."
 
@@ -82,9 +95,11 @@ Legal Sense "Timers" (chessclocks) page. Agreed in a grilling session on 2026-10
 - Running card: clear colored border + background tint.
 - Browser tab title while running: "▶ 0:42 · <dossier>" (h:mm of today's total).
   Otherwise "Legal Timers".
-- Keyboard shortcuts (ignored while typing in an input): 1-9 start/switch clock
+- Keyboard shortcuts (Timers view only; ignored while typing in an input, with
+  Ctrl/Cmd/Alt held, or while a dialog is open): 1-9 start/switch clock
   at that position, Space pause all, N new timer. Listed in a small help line.
 - System font, calm neutral styling, light/dark via prefers-color-scheme.
+- A small "beta" badge next to the title during the beta.
 - Line on the page: "Alles blijft in je browser. Deze site verstuurt niets." plus
   a short "how to check" note (DevTools Network tab).
 - Views: Timers (default) / Dag / Week / Instellingen, as tabs on one page.

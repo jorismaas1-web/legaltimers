@@ -52,4 +52,5 @@ the Content Security Policy and other security headers.
 - `src/i18n.js` - NL/EN string dictionary.
 - `test/*.test.js` - tests, run with the Node built-in test runner.
 
-See `docs/SPEC.md` for the full product spec.
+See `docs/SPEC.md` for the full product spec and `docs/BETA.md` for the
+(Dutch) guide for beta testers.
