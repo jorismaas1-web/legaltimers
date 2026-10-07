@@ -273,9 +273,3 @@ test('formatDecimalHours uses the given decimal separator', () => {
   assert.equal(core.formatDecimalHours(2, ','), '2');
   assert.equal(core.formatDecimalHours(1.25), '1.25');
 });
-
-test('extractActivityCode takes a trailing "(code)", else the full activity', () => {
-  assert.equal(core.extractActivityCode('Fiscaal advies (963)'), '963');
-  assert.equal(core.extractActivityCode('Fiscaal advies'), 'Fiscaal advies');
-  assert.equal(core.extractActivityCode(''), '');
-});

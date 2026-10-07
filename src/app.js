@@ -329,7 +329,7 @@ function renderDay() {
     tdDossier.append(row.dossier, copyButton(dossierNumber, t('copyDossier')));
 
     const tdActivity = document.createElement('td');
-    tdActivity.append(row.activity, copyButton(core.extractActivityCode(row.activity), t('copyActivity')));
+    tdActivity.textContent = row.activity;
 
     const tdExact = document.createElement('td');
     tdExact.textContent = core.formatHMS(row.elapsedMs);
