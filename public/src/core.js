@@ -353,6 +353,21 @@ export function addManualEntry(state, { dossier, day, ms, description = '', bill
   return { state: next, clockId: clock.id };
 }
 
+// Removes all of one timer's time on one day, with that day's description
+// and marks. A running timer whose run touches that day is stopped first,
+// otherwise the row would come straight back. Other days stay as they are.
+export function deleteDayTime(state, clockId, day, now) {
+  const runsThatDay =
+    state.running &&
+    state.running.clockId === clockId &&
+    splitSegment({ clockId, start: state.running.startedAt, end: now }).some((p) => dayKey(p.start) === day);
+  const next = runsThatDay ? pauseRunning(state, now) : clone(state);
+  next.segments = next.segments.filter((s) => !(s.clockId === clockId && dayKey(s.start) === day));
+  delete next.adjustments[adjKey(clockId, day)];
+  delete next.dayData[adjKey(clockId, day)];
+  return next;
+}
+
 // ---------- billable / non-billable ----------
 
 export function clockBillableDefault(state, clockId, day) {

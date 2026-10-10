@@ -223,8 +223,13 @@ main {
   gap: 0.5em;
 }
 
-.card-delete {
+.card-delete,
+.row-delete {
   color: var(--danger);
+}
+
+.row-delete {
+  padding: 0.2em 0.5em;
 }
 
 .table-scroll {

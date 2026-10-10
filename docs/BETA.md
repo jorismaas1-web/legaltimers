@@ -38,7 +38,8 @@ computer, dan zie je je tijden niet. Maak af en toe een backup
    hebt ingevoerd. Met **Vorige dag** kun je een eerdere dag alsnog invoeren.
    Met **Tijd toevoegen** schrijf je tijd met de hand, bijv. voor een
    telefoontje zonder timer of voor een eerdere dag. De exacte tijd in een
-   regel kun je aanpassen; met 0 haal je de regel weg.
+   regel kun je aanpassen. Met het kruisje (✕) achter een regel verwijder je
+   de tijd van die dag.
    Per regel kun je declarabel alleen voor die dag omzetten. Onderaan staat
    het totaal, uitgesplitst in declarabel en niet declarabel.
 6. Tab **Week**: uren per dossier per dag, met totalen declarabel en niet

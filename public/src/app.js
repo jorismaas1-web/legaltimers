@@ -556,7 +556,25 @@ function renderDay() {
     });
     tdOvergenomen.appendChild(checkbox);
 
-    tr.append(tdDossier, tdExact, tdHours, tdDescription, tdBillable, tdOvergenomen);
+    const tdDelete = document.createElement('td');
+    const deleteBtn = document.createElement('button');
+    deleteBtn.type = 'button';
+    deleteBtn.className = 'row-delete';
+    deleteBtn.textContent = '✕';
+    deleteBtn.title = t('deleteDayTime');
+    deleteBtn.setAttribute('aria-label', `${t('deleteDayTime')}: ${row.dossier}`);
+    deleteBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      showConfirm(t('confirmDeleteDayTime', { dossier: row.dossier || '-', day: formatDayLabel(day) }), () => {
+        state = core.deleteDayTime(state, row.clockId, day, now());
+        persist();
+        renderDay();
+        renderCards();
+      });
+    });
+    tdDelete.appendChild(deleteBtn);
+
+    tr.append(tdDossier, tdExact, tdHours, tdDescription, tdBillable, tdOvergenomen, tdDelete);
     tr.addEventListener('click', (e) => {
       if (e.target.closest('input, button, a')) return;
       state = core.setOvergenomen(state, row.clockId, day, !row.overgenomen);
@@ -584,7 +602,7 @@ function renderDayFoot(rows) {
   const hours = document.createElement('td');
   hours.textContent = formatHoursForDisplay(split.total);
   const detail = document.createElement('td');
-  detail.colSpan = 3;
+  detail.colSpan = 4;
   detail.textContent = t(share === null ? 'daySplitLine' : 'daySplitLineShare', {
     billable: formatHoursForDisplay(split.billable),
     nonBillable: formatHoursForDisplay(split.nonBillable),

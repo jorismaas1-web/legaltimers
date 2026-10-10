@@ -626,3 +626,33 @@ test('adding or changing time on a row clears its overgenomen and Gereed marks',
   const restarted = core.startClock(transferred, clockId, now);
   assert.equal(core.getDaySummaryRows(restarted, day, now + 60000)[0].overgenomen, false);
 });
+
+// ---- deleting a day's time ----
+
+test('deleteDayTime removes one timer\'s time and day data for one day only', () => {
+  const t0 = localMs(2026, 10, 8, 9, 0, 0);
+  let { state, clockId } = core.addClock(core.createInitialState(), { dossier: 'Acme / 1' }, t0);
+  state = core.startClock(state, clockId, t0);
+  state = core.pauseRunning(state, t0 + 3600000);
+  state = core.setManualElapsed(state, clockId, '2026-10-08', 5400000, t0 + 3600000);
+  state = core.setDescription(state, clockId, '2026-10-08', 'SPA review');
+  state = core.startClock(state, clockId, localMs(2026, 10, 9, 9, 0, 0));
+  state = core.pauseRunning(state, localMs(2026, 10, 9, 10, 0, 0));
+  const now = localMs(2026, 10, 10, 12, 0, 0);
+
+  const next = core.deleteDayTime(state, clockId, '2026-10-08', now);
+  assert.deepEqual(core.getDaySummaryRows(next, '2026-10-08', now), []);
+  assert.equal(core.getDescription(next, clockId, '2026-10-08'), '');
+  assert.equal(core.elapsedForDay(next, clockId, '2026-10-09', now), 3600000);
+  assert.equal(core.activeClocks(next).length, 1);
+});
+
+test('deleteDayTime stops a running timer so the row does not come back', () => {
+  const t0 = localMs(2026, 10, 10, 9, 0, 0);
+  let { state, clockId } = core.addClock(core.createInitialState(), { dossier: 'Acme / 1' }, t0);
+  state = core.startClock(state, clockId, t0);
+  const now = localMs(2026, 10, 10, 10, 0, 0);
+  const next = core.deleteDayTime(state, clockId, '2026-10-10', now);
+  assert.equal(next.running, null);
+  assert.equal(core.elapsedForDay(next, clockId, '2026-10-10', now + 3600000), 0);
+});
