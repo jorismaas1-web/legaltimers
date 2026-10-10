@@ -14,6 +14,7 @@
   <div class="header-total">
     <span data-i18n="todayTotal">Totaal vandaag</span>:
     <strong id="header-today-total">0:00:00</strong>
+    <span id="header-billable-split" class="header-split"></span>
   </div>
   <button type="button" id="lang-toggle" class="lang-toggle" aria-label="Taal / Language">NL</button>
 </header>
@@ -59,10 +60,12 @@
           <th data-i18n="colExactTime">Exacte tijd</th>
           <th data-i18n="colRoundedHours">Afgeronde uren</th>
           <th data-i18n="colDescription">Omschrijving</th>
+          <th data-i18n="colBillable">Declarabel</th>
           <th data-i18n="colOvergenomen">Overgenomen</th>
         </tr>
       </thead>
       <tbody id="day-table-body"></tbody>
+      <tfoot id="day-table-foot"></tfoot>
     </table>
   </div>
   <button type="button" id="copy-day-table-btn" data-i18n="copyDayTable">Kopieer dag als tabel</button>
@@ -81,6 +84,14 @@
       <tbody id="week-table-body"></tbody>
       <tfoot id="week-table-foot"></tfoot>
     </table>
+  </div>
+  <p class="week-legend" data-i18n="weekLegendNonBillable">Cursief = niet declarabel</p>
+  <div id="week-billable-summary" class="billable-summary">
+    <p id="week-billable-share"></p>
+    <div id="week-norm" class="week-norm" hidden>
+      <p id="week-norm-line"></p>
+      <progress id="week-norm-progress" max="1" value="0"></progress>
+    </div>
   </div>
 </section>
 
@@ -110,6 +121,10 @@
         <option value="decimal" data-i18n="formatDecimal">Decimaal (1,7)</option>
         <option value="hm" data-i18n="formatHM">Uren:minuten (1:42)</option>
       </select>
+    </label>
+    <label class="field">
+      <span data-i18n="settingsWeeklyNorm">Weeknorm declarabele uren (leeg = uit)</span>
+      <input type="text" id="settings-weekly-norm" name="weeklyNorm" inputmode="decimal" autocomplete="off">
     </label>
     <label class="field">
       <span data-i18n="settingsDeleteOld">Verwijder alles ouder dan (weken)</span>
@@ -154,12 +169,15 @@
 <template id="card-template">
   <article class="card">
     <input type="text" class="card-dossier" list="dossier-history">
+    <input type="text" class="card-description" autocomplete="off">
+    <datalist class="card-description-suggestions"></datalist>
     <div class="card-time-row">
       <input type="text" class="card-time">
       <button type="button" class="card-startpause"></button>
     </div>
     <div class="card-actions">
       <button type="button" class="card-ready" data-i18n="ready">Gereed</button>
+      <button type="button" class="card-billable billable-toggle"></button>
       <button type="button" class="card-delete" aria-label="Verwijderen">✕</button>
     </div>
   </article>

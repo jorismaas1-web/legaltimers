@@ -220,8 +220,8 @@ test('buildDayTSV produces header + rows separated by tabs and newlines', () => 
     { date: '2026-10-07', dossier: '2002100001', hours: '1.7', description: 'memo' },
   ]);
   const lines = tsv.split('\n');
-  assert.equal(lines[0], 'date\tdossier\thours\tdescription');
-  assert.equal(lines[1], '2026-10-07\t2002100001\t1.7\tmemo');
+  assert.equal(lines[0], 'date\tdossier\thours\tdescription\tbillable');
+  assert.equal(lines[1], '2026-10-07\t2002100001\t1.7\tmemo\t');
 });
 
 // ---- long-run detection ----
@@ -307,7 +307,7 @@ test('starting a clock again clears its Gereed mark for today', () => {
 
 test('buildDayTSV replaces tabs and newlines inside fields with spaces', () => {
   const tsv = core.buildDayTSV([{ date: '2026-10-07', dossier: 'A\tB', hours: '0,2', description: 'line1\nline2' }]);
-  assert.equal(tsv.split('\n')[1], '2026-10-07\tA B\t0,2\tline1 line2');
+  assert.equal(tsv.split('\n')[1], '2026-10-07\tA B\t0,2\tline1 line2\t');
 });
 
 test('isReady reports the Gereed mark for a clock on a day', () => {
@@ -317,4 +317,139 @@ test('isReady reports the Gereed mark for a clock on a day', () => {
   state = core.markReady(state, clockId, '2026-10-07', t0);
   assert.equal(core.isReady(state, clockId, '2026-10-07'), true);
   assert.equal(core.isReady(state, clockId, '2026-10-08'), false);
+});
+
+// ---- billable / non-billable ----
+
+function workedDay(state, clockId, y, m, d, hours) {
+  const start = localMs(y, m, d, 9, 0, 0);
+  state = core.startClock(state, clockId, start);
+  return core.pauseRunning(state, start + hours * 3600000);
+}
+
+test('time is billable by default; a day can be switched to non-billable without touching other days', () => {
+  const t0 = localMs(2026, 10, 7, 9, 0, 0);
+  let { state, clockId } = core.addClock(core.createInitialState(), { dossier: 'A' }, t0);
+  assert.equal(core.isBillable(state, clockId, '2026-10-07'), true);
+  state = core.setDayBillable(state, clockId, '2026-10-07', false);
+  assert.equal(core.isBillable(state, clockId, '2026-10-07'), false);
+  assert.equal(core.isBillable(state, clockId, '2026-10-08'), true);
+});
+
+test('switching a timer to non-billable keeps earlier days as they were and makes today follow the timer', () => {
+  const t0 = localMs(2026, 10, 5, 9, 0, 0);
+  let { state, clockId } = core.addClock(core.createInitialState(), { dossier: 'Intern' }, t0);
+  state = workedDay(state, clockId, 2026, 10, 5, 1);
+  state = workedDay(state, clockId, 2026, 10, 6, 1);
+  state = core.setDayBillable(state, clockId, '2026-10-06', false);
+  state = workedDay(state, clockId, 2026, 10, 7, 1);
+  // Today was overridden to billable in the day view; the card switch wins for today.
+  state = core.setDayBillable(state, clockId, '2026-10-07', true);
+
+  const now = localMs(2026, 10, 7, 12, 0, 0);
+  state = core.setClockBillable(state, clockId, false, now);
+
+  assert.equal(core.isBillable(state, clockId, '2026-10-05'), true);
+  assert.equal(core.isBillable(state, clockId, '2026-10-06'), false);
+  assert.equal(core.isBillable(state, clockId, '2026-10-07'), false);
+  assert.equal(core.isBillable(state, clockId, '2026-10-08'), false);
+  assert.equal(core.clockBillableDefault(state, clockId), false);
+});
+
+test('day summary rows carry the billable flag', () => {
+  const t0 = localMs(2026, 10, 7, 9, 0, 0);
+  let { state, clockId } = core.addClock(core.createInitialState(), { dossier: 'A' }, t0);
+  state = workedDay(state, clockId, 2026, 10, 7, 1);
+  state = core.setDayBillable(state, clockId, '2026-10-07', false);
+  const rows = core.getDaySummaryRows(state, '2026-10-07', localMs(2026, 10, 7, 12, 0, 0));
+  assert.equal(rows[0].billable, false);
+});
+
+test('daySplit sums rounded hours per row into billable and non-billable', () => {
+  const t0 = localMs(2026, 10, 7, 9, 0, 0);
+  let state = core.createInitialState();
+  let res = core.addClock(state, { dossier: 'A' }, t0);
+  state = res.state;
+  const a = res.clockId;
+  res = core.addClock(state, { dossier: 'B' }, t0);
+  state = res.state;
+  const b = res.clockId;
+  // A: 7 minutes -> 0.2 rounded up; B: 61 minutes -> 1.1, non-billable
+  state = core.startClock(state, a, t0);
+  state = core.startClock(state, b, t0 + 7 * 60000);
+  state = core.pauseRunning(state, t0 + 68 * 60000);
+  state = core.setDayBillable(state, b, '2026-10-07', false);
+
+  const split = core.daySplit(state, '2026-10-07', localMs(2026, 10, 7, 12, 0, 0), { roundUnitMinutes: 6, roundMode: 'up' });
+  assert.deepEqual(split, { total: 1.3, billable: 0.2, nonBillable: 1.1 });
+});
+
+test('aggregateWeek splits each day and the week into billable and non-billable', () => {
+  const mon = localMs(2026, 10, 5, 9, 0, 0);
+  let state = core.createInitialState();
+  let res = core.addClock(state, { dossier: 'Client' }, mon);
+  state = res.state;
+  const client = res.clockId;
+  res = core.addClock(state, { dossier: 'Intern' }, mon);
+  state = res.state;
+  const intern = res.clockId;
+  state = core.setClockBillable(state, intern, false, mon);
+
+  state = workedDay(state, client, 2026, 10, 5, 2);
+  state = workedDay(state, intern, 2026, 10, 6, 1);
+  state = workedDay(state, client, 2026, 10, 7, 3);
+  state = core.setDayBillable(state, client, '2026-10-07', false);
+
+  const now = localMs(2026, 10, 9, 12, 0, 0);
+  const agg = core.aggregateWeek(state, core.getWeekStart(mon), now, { roundUnitMinutes: 6, roundMode: 'up' });
+  const clientRow = agg.rows.find((r) => r.clockId === client);
+  assert.deepEqual(clientRow.billable.slice(0, 3), [true, true, false]);
+  assert.deepEqual(agg.billableDayTotals.slice(0, 3), [2, 0, 0]);
+  assert.deepEqual(agg.nonBillableDayTotals.slice(0, 3), [0, 1, 3]);
+  assert.equal(agg.billableWeekTotal, 2);
+  assert.equal(agg.nonBillableWeekTotal, 4);
+  assert.equal(agg.weekTotal, 6);
+});
+
+test('billableShare gives a whole percentage, or null when there is no time', () => {
+  assert.equal(core.billableShare(3, 4), 75);
+  assert.equal(core.billableShare(2, 3), 67);
+  assert.equal(core.billableShare(0, 0), null);
+});
+
+test('pruneOlderThan keeps the billable default of an active timer', () => {
+  const t0 = localMs(2026, 1, 5, 9, 0, 0);
+  let { state, clockId } = core.addClock(core.createInitialState(), { dossier: 'Intern' }, t0);
+  state = core.setClockBillable(state, clockId, false, t0);
+  state = core.pruneOlderThan(state, 1, localMs(2026, 10, 7, 9, 0, 0));
+  assert.equal(core.isBillable(state, clockId, '2026-10-07'), false);
+});
+
+// ---- description suggestions ----
+
+test('descriptionSuggestions lists earlier descriptions for the same dossier, most recent first, without duplicates', () => {
+  const t0 = localMs(2026, 10, 5, 9, 0, 0);
+  let state = core.createInitialState();
+  let res = core.addClock(state, { dossier: 'Client / 2002100001' }, t0);
+  state = res.state;
+  const a = res.clockId;
+  res = core.addClock(state, { dossier: 'Client / 2002100001 ' }, t0); // same dossier, stray space
+  state = res.state;
+  const a2 = res.clockId;
+  res = core.addClock(state, { dossier: 'Other' }, t0);
+  state = res.state;
+  const other = res.clockId;
+
+  state = core.setDescription(state, a, '2026-10-05', 'Memo opgesteld');
+  state = core.setDescription(state, a, '2026-10-06', 'Call met cliënt');
+  state = core.setDescription(state, a2, '2026-10-07', 'Memo opgesteld');
+  state = core.setDescription(state, a, '2026-10-08', '  ');
+  state = core.setDescription(state, other, '2026-10-08', 'Niet deze');
+
+  assert.deepEqual(core.descriptionSuggestions(state, 'Client / 2002100001'), ['Memo opgesteld', 'Call met cliënt']);
+  assert.deepEqual(core.descriptionSuggestions(state, ''), []);
+});
+
+test('the weekly billable norm is off by default', () => {
+  assert.equal(core.createInitialState().settings.weeklyBillableNorm, null);
 });

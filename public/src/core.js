@@ -8,15 +8,16 @@ export const SCHEMA_VERSION = 1;
 //
 // state = {
 //   schemaVersion: 1,
-//   clocks: [{ id, dossier, createdAt, archived? }],
+//   clocks: [{ id, dossier, createdAt, archived?, billable? }],  // billable defaults to true
 //   segments: [{ clockId, start, end }],      // finalized, each within one local day
 //   running: { clockId, startedAt } | null,   // at most one clock runs
 //   adjustments: { "<clockId>__<day>": deltaMs },
-//   dayData: { "<clockId>__<day>": { description, overgenomen, ready } },
+//   dayData: { "<clockId>__<day>": { description, overgenomen, ready, billable? } },
+//                                      // billable unset = follow the clock's default
 //   longRunDecisions: { "<clockId>__<startedAt>": "keep" | { correctedEnd } },
 //   settings: {
 //     roundUnitMinutes, roundMode, hoursFormat,
-//     language, deleteOlderThanWeeks
+//     language, deleteOlderThanWeeks, weeklyBillableNorm
 //   },
 //   nextClockSeq: number
 // }
@@ -36,6 +37,7 @@ export function createInitialState() {
       hoursFormat: 'decimal',
       language: null,
       deleteOlderThanWeeks: null,
+      weeklyBillableNorm: null,
     },
     nextClockSeq: 1,
     dossierHistory: [],
@@ -244,6 +246,10 @@ function getDayData(state, clockId, day) {
   return state.dayData[adjKey(clockId, day)] || { description: '', overgenomen: false, ready: false };
 }
 
+export function getDescription(state, clockId, day) {
+  return getDayData(state, clockId, day).description || '';
+}
+
 export function setDescription(state, clockId, day, description) {
   const next = clone(state);
   const key = adjKey(clockId, day);
@@ -270,6 +276,101 @@ export function isReady(state, clockId, day) {
   return getDayData(state, clockId, day).ready;
 }
 
+// ---------- billable / non-billable ----------
+
+export function clockBillableDefault(state, clockId) {
+  const clock = state.clocks.find((c) => c.id === clockId);
+  return !clock || clock.billable !== false;
+}
+
+export function isBillable(state, clockId, day) {
+  const dd = state.dayData[adjKey(clockId, day)];
+  if (dd && typeof dd.billable === 'boolean') return dd.billable;
+  return clockBillableDefault(state, clockId);
+}
+
+export function setDayBillable(state, clockId, day, value) {
+  const next = clone(state);
+  const key = adjKey(clockId, day);
+  next.dayData[key] = { ...getDayData(next, clockId, day), billable: !!value };
+  return next;
+}
+
+function daysWithData(state, clockId) {
+  const days = new Set();
+  for (const s of state.segments) if (s.clockId === clockId) days.add(dayKey(s.start));
+  if (state.running && state.running.clockId === clockId) days.add(dayKey(state.running.startedAt));
+  for (const key of [...Object.keys(state.adjustments), ...Object.keys(state.dayData)]) {
+    const [id, day] = key.split('__');
+    if (id === clockId && day) days.add(day);
+  }
+  return days;
+}
+
+// Sets the timer's default from today on. Earlier days that followed the old
+// default get it written down, so switching a card never rewrites history;
+// today drops any per-day choice and follows the card.
+export function setClockBillable(state, clockId, value, now) {
+  const next = clone(state);
+  const today = dayKey(now);
+  const oldDefault = clockBillableDefault(state, clockId);
+  for (const day of daysWithData(state, clockId)) {
+    if (day >= today) continue;
+    const key = adjKey(clockId, day);
+    const dd = getDayData(next, clockId, day);
+    if (typeof dd.billable !== 'boolean') next.dayData[key] = { ...dd, billable: oldDefault };
+  }
+  const todayKey = adjKey(clockId, today);
+  if (next.dayData[todayKey]) {
+    const { billable, ...rest } = next.dayData[todayKey];
+    next.dayData[todayKey] = rest;
+  }
+  next.clocks = next.clocks.map((c) => (c.id === clockId ? { ...c, billable: !!value } : c));
+  return next;
+}
+
+// Rounded hours for a day, split by billable flag. Each row is rounded on its
+// own (that is what gets booked), then summed.
+export function daySplit(state, day, now, settings) {
+  let billable = 0;
+  let nonBillable = 0;
+  for (const c of state.clocks) {
+    const h = roundHoursMs(elapsedForDay(state, c.id, day, now), settings.roundUnitMinutes, settings.roundMode);
+    if (h <= 0) continue;
+    if (isBillable(state, c.id, day)) billable += h;
+    else nonBillable += h;
+  }
+  return { total: round2(billable + nonBillable), billable: round2(billable), nonBillable: round2(nonBillable) };
+}
+
+export function billableShare(billableHours, totalHours) {
+  if (!(totalHours > 0)) return null;
+  return Math.round((billableHours / totalHours) * 100);
+}
+
+// ---------- description suggestions ----------
+
+// Earlier descriptions written for the same dossier (on any of its cards),
+// most recent day first, without duplicates.
+export function descriptionSuggestions(state, dossier, limit = 30) {
+  const target = (dossier || '').trim();
+  if (!target) return [];
+  const ids = new Set(state.clocks.filter((c) => (c.dossier || '').trim() === target).map((c) => c.id));
+  const entries = [];
+  for (const [key, dd] of Object.entries(state.dayData)) {
+    const [id, day] = key.split('__');
+    const text = (dd && typeof dd.description === 'string' ? dd.description : '').trim();
+    if (ids.has(id) && text) entries.push({ day, text });
+  }
+  entries.sort((a, b) => (a.day < b.day ? 1 : a.day > b.day ? -1 : 0));
+  const out = [];
+  for (const e of entries) {
+    if (!out.includes(e.text)) out.push(e.text);
+    if (out.length >= limit) break;
+  }
+  return out;
+}
+
 export function getDaySummaryRows(state, day, now) {
   const rows = [];
   for (const c of state.clocks) {
@@ -283,6 +384,7 @@ export function getDaySummaryRows(state, day, now) {
       description: dd.description,
       overgenomen: dd.overgenomen,
       ready: dd.ready,
+      billable: isBillable(state, c.id, day),
     });
   }
   return rows;
@@ -406,10 +508,10 @@ function tsvField(v) {
 }
 
 export function buildDayTSV(rows) {
-  const header = ['date', 'dossier', 'hours', 'description'];
+  const header = ['date', 'dossier', 'hours', 'description', 'billable'];
   const lines = [header.join('\t')];
   for (const r of rows) {
-    lines.push([r.date, r.dossier, r.hours, r.description].map(tsvField).join('\t'));
+    lines.push([r.date, r.dossier, r.hours, r.description, r.billable].map(tsvField).join('\t'));
   }
   return lines.join('\n');
 }
@@ -428,13 +530,27 @@ export function aggregateWeek(state, weekStartMs, now, settings) {
     const total = round2(hours.reduce((a, b) => a + b, 0));
     const hasAny = hours.some((h) => h > 0);
     if (!hasAny) continue;
-    rows.push({ clockId: c.id, dossier: c.dossier, hours, total });
+    const billable = days.map((day) => isBillable(state, c.id, day));
+    rows.push({ clockId: c.id, dossier: c.dossier, hours, billable, total });
   }
 
-  const dayTotals = days.map((_, i) => round2(rows.reduce((a, r) => a + r.hours[i], 0)));
-  const weekTotal = round2(dayTotals.reduce((a, b) => a + b, 0));
+  const sumDay = (i, wantBillable) =>
+    round2(rows.reduce((a, r) => a + (wantBillable === undefined || r.billable[i] === wantBillable ? r.hours[i] : 0), 0));
+  const dayTotals = days.map((_, i) => sumDay(i));
+  const billableDayTotals = days.map((_, i) => sumDay(i, true));
+  const nonBillableDayTotals = days.map((_, i) => sumDay(i, false));
+  const sum = (xs) => round2(xs.reduce((a, b) => a + b, 0));
 
-  return { days, rows, dayTotals, weekTotal };
+  return {
+    days,
+    rows,
+    dayTotals,
+    weekTotal: sum(dayTotals),
+    billableDayTotals,
+    nonBillableDayTotals,
+    billableWeekTotal: sum(billableDayTotals),
+    nonBillableWeekTotal: sum(nonBillableDayTotals),
+  };
 }
 
 export function weekHasUnprocessed(state, day, now) {

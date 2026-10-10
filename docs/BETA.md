@@ -20,19 +20,29 @@ computer, dan zie je je tijden niet. Maak af en toe een backup
 ## Zo werkt het
 
 1. **Nieuwe timer**, typ het dossier, bijv. `Client BV / Matter / 2002100001`.
-   Eerder gebruikte dossiers komen terug als suggestie.
+   Eerder gebruikte dossiers komen terug als suggestie. Daaronder kun je
+   meteen de omschrijving typen; eerdere omschrijvingen bij hetzelfde
+   dossier komen terug als suggestie.
 2. **Start**. Start je een andere timer, dan pauzeert de eerste. Met
    **Alles pauzeren** (of spatie) zet je alles stil voor een pauze.
 3. Tijd vergeten te starten? Klik in de tijd en typ wat het moet zijn:
    `1:30`, `1:30:00` of `1,5`.
 4. **Gereed** zet een timer stil en markeert de tijd van vandaag als klaar.
+   Met **Declarabel / Niet declarabel** op de kaart zet je of de tijd van die
+   timer declarabel is (bijv. een intern dossier op niet declarabel). Dat
+   geldt vanaf vandaag; eerdere dagen blijven zoals ze waren.
 5. Tab **Dag**: per dossier de exacte en afgeronde tijd (standaard per 6
    minuten naar boven). Met de knopjes naast elk veld kopieer je
    dossiernummer, uren en omschrijving, in de volgorde van de
    urenregistratie. Vink **Overgenomen** aan (of klik op de regel) als je het
    hebt ingevoerd. Met **Vorige dag** kun je een eerdere dag alsnog invoeren.
-6. Tab **Week**: uren per dossier per dag. Een stip bij een dag betekent dat
-   daar nog iets niet is overgenomen; klik op de dag om hem te openen.
+   Per regel kun je declarabel alleen voor die dag omzetten. Onderaan staat
+   het totaal, uitgesplitst in declarabel en niet declarabel.
+6. Tab **Week**: uren per dossier per dag, met totalen declarabel en niet
+   declarabel (niet declarabel staat cursief). Een stip bij een dag betekent
+   dat daar nog iets niet is overgenomen; klik op de dag om hem te openen.
+   Zet in **Instellingen** een weeknorm voor declarabele uren, dan zie je
+   hier hoe ver je bent.
 
 Sneltoetsen op het Timers-tabblad: `1` t/m `9` start of wisselt naar die
 timer, spatie pauzeert alles, `N` maakt een nieuwe timer.

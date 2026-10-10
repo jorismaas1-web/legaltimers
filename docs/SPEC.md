@@ -24,7 +24,11 @@ Legal Sense "Timers" (chessclocks) page. Agreed in a grilling session on 2026-10
   Autocomplete (datalist is fine) from dossiers used before, most recent first.
 - Time: shown as hh:mm:ss, editable by hand (parse h:mm, h:mm:ss, decimal "1.5"
   or "1,5").
-- Buttons: Start / Pause, Gereed, delete (✕) with a confirm dialog.
+- Description line under the dossier: today's description for this clock (the
+  same value the day summary shows and copies). Suggestions (datalist) from
+  earlier descriptions on any card with the same dossier, most recent first.
+- Buttons: Start / Pause, Gereed, Declarabel / Niet declarabel toggle,
+  delete (✕) with a confirm dialog.
 - Chess-clock rule: at most one clock runs. Starting one immediately pauses the
   running one. No confirmation.
 - "Pause all" button for breaks.
@@ -70,8 +74,24 @@ Legal Sense "Timers" (chessclocks) page. Agreed in a grilling session on 2026-10
 - Clicking the row (outside inputs/buttons) toggles "overgenomen".
 - Copy buttons briefly show ✓ (or ✗ if the browser refused).
 - "Kopieer dag als tabel": TSV with header: date, dossier, hours,
-  description. Tabs/newlines inside fields become spaces.
+  description, billable. Tabs/newlines inside fields become spaces.
 - Total today shown at the top of the page.
+
+## Billable / non-billable
+
+- Time is billable by default. The card toggle sets the clock's default from
+  today on: earlier days that followed the old default get it written down
+  (so history never changes), today follows the new default. The card shows
+  today's value.
+- The day summary has a toggle per row that changes only that day.
+- Totals use rounded hours (each row rounded, then summed), as booked.
+- Header: today's billable and non-billable hours next to the total.
+- Day summary: footer row with total, billable, non-billable and % billable.
+- Week view: non-billable cells in italic; footer rows total / billable /
+  non-billable; a line with the week split and % billable.
+- Settings: weekly billable target in hours (empty = off). When set, the
+  week view shows progress ("x of y, z to go") with a progress bar.
+- "Kopieer dag als tabel" adds a billable column (ja/nee, yes/no).
 
 ## Week view
 
@@ -127,4 +147,5 @@ Legal Sense "Timers" (chessclocks) page. Agreed in a grilling session on 2026-10
 ## Out of scope
 
 Accounts, sync, server, API/integration with time-tracking software, file import
-into those programs, rates, billable codes, PWA/offline install, analytics.
+into those programs, rates, billable codes or werksoorten (only a billable yes/no
+flag), PWA/offline install, analytics.

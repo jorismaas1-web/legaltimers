@@ -138,19 +138,36 @@ function createCardElement(clock) {
   node.dataset.clockId = clock.id;
 
   const dossierInput = node.querySelector('.card-dossier');
+  const descInput = node.querySelector('.card-description');
+  const descList = node.querySelector('.card-description-suggestions');
   const timeInput = node.querySelector('.card-time');
   const startPauseBtn = node.querySelector('.card-startpause');
   const readyBtn = node.querySelector('.card-ready');
+  const billableBtn = node.querySelector('.card-billable');
   const deleteBtn = node.querySelector('.card-delete');
 
   dossierInput.placeholder = t('dossierPlaceholder');
   dossierInput.value = clock.dossier;
+  descList.id = `desc-suggestions-${clock.id}`;
+  descInput.setAttribute('list', descList.id);
 
   dossierInput.addEventListener('change', () => {
     state = core.updateClock(state, clock.id, { dossier: dossierInput.value });
     state = core.recordDossierUsed(state, dossierInput.value);
     persist();
     renderDossierHistory();
+    fillSuggestions(descList, dossierInput.value);
+  });
+  // The card's description is today's description, the same text the day
+  // summary shows and copies into AFAS.
+  descInput.addEventListener('change', () => {
+    state = core.setDescription(state, clock.id, today(), descInput.value);
+    persist();
+  });
+  billableBtn.addEventListener('click', () => {
+    state = core.setClockBillable(state, clock.id, !core.isBillable(state, clock.id, today()), now());
+    persist();
+    renderCards();
   });
   timeInput.addEventListener('change', () => {
     const ms = core.parseTimeInput(timeInput.value);
@@ -176,7 +193,7 @@ function createCardElement(clock) {
     });
   });
 
-  cardEls.set(clock.id, { node, dossierInput, timeInput, startPauseBtn, readyBtn, deleteBtn });
+  cardEls.set(clock.id, { node, dossierInput, descInput, descList, timeInput, startPauseBtn, readyBtn, billableBtn, deleteBtn });
   return node;
 }
 
@@ -207,12 +224,18 @@ function renderCards() {
     }
     const running = !!(state.running && state.running.clockId === clock.id);
     const ready = !running && core.isReady(state, clock.id, day);
+    const billable = core.isBillable(state, clock.id, day);
     if (document.activeElement !== entry.dossierInput) entry.dossierInput.value = clock.dossier;
     entry.dossierInput.placeholder = t('dossierPlaceholder');
+    entry.descInput.placeholder = t('descriptionPlaceholder');
+    syncCardDescription(entry, clock.id, day);
+    fillSuggestions(entry.descList, clock.dossier);
     entry.node.classList.toggle('is-running', running);
     entry.node.classList.toggle('is-ready', ready);
+    entry.node.classList.toggle('is-nonbillable', !billable);
     entry.startPauseBtn.textContent = running ? t('pause') : t('start');
     entry.readyBtn.textContent = ready ? `${t('ready')} ✓` : t('ready');
+    setBillableToggle(entry.billableBtn, billable, t('cardBillableTitle'));
     entry.deleteBtn.setAttribute('aria-label', t('deleteTimer'));
     entry.deleteBtn.title = t('deleteTimer');
   }
@@ -232,6 +255,28 @@ function renderCards() {
 
   updateLongRunBanner();
   tick();
+}
+
+function syncCardDescription(entry, clockId, day) {
+  if (document.activeElement === entry.descInput) return;
+  const value = core.getDescription(state, clockId, day);
+  if (entry.descInput.value !== value) entry.descInput.value = value;
+}
+
+function fillSuggestions(list, dossier) {
+  list.innerHTML = '';
+  for (const text of core.descriptionSuggestions(state, dossier)) {
+    const opt = document.createElement('option');
+    opt.value = text;
+    list.appendChild(opt);
+  }
+}
+
+function setBillableToggle(btn, billable, title) {
+  btn.textContent = billable ? t('billable') : t('nonBillable');
+  btn.classList.toggle('is-nonbillable', !billable);
+  btn.setAttribute('aria-pressed', String(billable));
+  btn.title = title;
 }
 
 function renderDossierHistory() {
@@ -317,10 +362,16 @@ function tick() {
     if (document.activeElement !== entry.timeInput) {
       entry.timeInput.value = core.formatHMS(core.elapsedForDay(state, clock.id, day, n));
     }
+    syncCardDescription(entry, clock.id, day);
   }
 
   const totalMs = core.totalForDayAllClocks(state, day, n);
   document.getElementById('header-today-total').textContent = core.formatHMS(totalMs);
+  const split = core.daySplit(state, day, n, state.settings);
+  document.getElementById('header-billable-split').textContent =
+    split.total > 0
+      ? `· ${t('billable').toLowerCase()} ${formatHoursForDisplay(split.billable)} ${t('hoursShort')} · ${t('nonBillable').toLowerCase()} ${formatHoursForDisplay(split.nonBillable)} ${t('hoursShort')}`
+      : '';
 
   if (state.running) {
     const clock = state.clocks.find((c) => c.id === state.running.clockId);
@@ -390,6 +441,7 @@ function renderDay() {
   for (const row of rows) {
     const tr = document.createElement('tr');
     tr.classList.toggle('row-overgenomen', row.overgenomen);
+    tr.classList.toggle('row-nonbillable', !row.billable);
 
     const roundedHours = core.roundHoursMs(row.elapsedMs, state.settings.roundUnitMinutes, state.settings.roundMode);
     const hoursDisplay = formatHoursForDisplay(roundedHours);
@@ -414,12 +466,31 @@ function renderDay() {
     const descInput = document.createElement('input');
     descInput.type = 'text';
     descInput.value = row.description;
+    descInput.autocomplete = 'off';
+    const descList = document.createElement('datalist');
+    descList.id = `day-desc-suggestions-${row.clockId}`;
+    fillSuggestions(descList, row.dossier);
+    descInput.setAttribute('list', descList.id);
     descInput.addEventListener('click', (e) => e.stopPropagation());
     descInput.addEventListener('change', () => {
       state = core.setDescription(state, row.clockId, day, descInput.value);
       persist();
     });
-    tdDescription.append(descInput, copyButton(() => descInput.value, t('copyDescription')));
+    tdDescription.append(descInput, descList, copyButton(() => descInput.value, t('copyDescription')));
+
+    const tdBillable = document.createElement('td');
+    const billableBtn = document.createElement('button');
+    billableBtn.type = 'button';
+    billableBtn.className = 'billable-toggle';
+    setBillableToggle(billableBtn, row.billable, t('dayBillableTitle'));
+    billableBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      state = core.setDayBillable(state, row.clockId, day, !row.billable);
+      persist();
+      renderDay();
+      renderCards();
+    });
+    tdBillable.appendChild(billableBtn);
 
     const tdOvergenomen = document.createElement('td');
     const checkbox = document.createElement('input');
@@ -433,7 +504,7 @@ function renderDay() {
     });
     tdOvergenomen.appendChild(checkbox);
 
-    tr.append(tdDossier, tdExact, tdHours, tdDescription, tdOvergenomen);
+    tr.append(tdDossier, tdExact, tdHours, tdDescription, tdBillable, tdOvergenomen);
     tr.addEventListener('click', (e) => {
       if (e.target.closest('input, button, a')) return;
       state = core.setOvergenomen(state, row.clockId, day, !row.overgenomen);
@@ -443,6 +514,28 @@ function renderDay() {
 
     tbody.appendChild(tr);
   }
+
+  renderDayFoot(day, n, rows.length > 0);
+}
+
+function renderDayFoot(day, n, hasRows) {
+  const tfoot = document.getElementById('day-table-foot');
+  tfoot.innerHTML = '';
+  if (!hasRows) return;
+  const split = core.daySplit(state, day, n, state.settings);
+  const tr = document.createElement('tr');
+  const label = document.createElement('td');
+  label.textContent = t('weekTotalRow');
+  const exact = document.createElement('td');
+  const hours = document.createElement('td');
+  hours.textContent = formatHoursForDisplay(split.total);
+  const detail = document.createElement('td');
+  detail.colSpan = 3;
+  detail.textContent = `${t('billable')} ${formatHoursForDisplay(split.billable)} · ${t('nonBillable')} ${formatHoursForDisplay(
+    split.nonBillable,
+  )} · ${t('billableShareLabel').replace('{pct}', String(core.billableShare(split.billable, split.total)))}`;
+  tr.append(label, exact, hours, detail);
+  tfoot.appendChild(tr);
 }
 
 function copyButton(valueOrFn, label) {
@@ -513,7 +606,13 @@ document.getElementById('copy-day-table-btn').addEventListener('click', (e) => {
   const rows = core.getDaySummaryRows(state, day, n).map((row) => {
     const roundedHours = core.roundHoursMs(row.elapsedMs, state.settings.roundUnitMinutes, state.settings.roundMode);
     const hoursDisplay = formatHoursForDisplay(roundedHours);
-    return { date: day, dossier: row.dossier, hours: hoursDisplay, description: row.description };
+    return {
+      date: day,
+      dossier: row.dossier,
+      hours: hoursDisplay,
+      description: row.description,
+      billable: row.billable ? t('yes') : t('no'),
+    };
   });
   copyToClipboard(core.buildDayTSV(rows), e.currentTarget);
 });
@@ -566,11 +665,15 @@ function renderWeek() {
     const tdDossier = document.createElement('td');
     tdDossier.textContent = row.dossier;
     tr.appendChild(tdDossier);
-    for (const h of row.hours) {
+    row.hours.forEach((h, i) => {
       const td = document.createElement('td');
       td.textContent = h > 0 ? formatHoursForDisplay(h) : '';
+      if (h > 0 && !row.billable[i]) {
+        td.classList.add('cell-nonbillable');
+        td.title = t('nonBillable');
+      }
       tr.appendChild(td);
-    }
+    });
     const tdTotal = document.createElement('td');
     tdTotal.textContent = formatHoursForDisplay(row.total);
     tr.appendChild(tdTotal);
@@ -579,19 +682,56 @@ function renderWeek() {
 
   const tfoot = document.getElementById('week-table-foot');
   tfoot.innerHTML = '';
-  const footRow = document.createElement('tr');
-  const footLabel = document.createElement('td');
-  footLabel.textContent = t('weekTotalRow');
-  footRow.appendChild(footLabel);
-  for (const dt of agg.dayTotals) {
-    const td = document.createElement('td');
-    td.textContent = dt > 0 ? formatHoursForDisplay(dt) : '';
-    footRow.appendChild(td);
+  const footRows = [
+    [t('weekTotalRow'), agg.dayTotals, agg.weekTotal, 'week-foot-total'],
+    [t('billable'), agg.billableDayTotals, agg.billableWeekTotal, 'week-foot-split'],
+    [t('nonBillable'), agg.nonBillableDayTotals, agg.nonBillableWeekTotal, 'week-foot-split'],
+  ];
+  for (const [label, totals, total, cls] of footRows) {
+    const footRow = document.createElement('tr');
+    footRow.className = cls;
+    const footLabel = document.createElement('td');
+    footLabel.textContent = label;
+    footRow.appendChild(footLabel);
+    for (const dt of totals) {
+      const td = document.createElement('td');
+      td.textContent = dt > 0 ? formatHoursForDisplay(dt) : '';
+      footRow.appendChild(td);
+    }
+    const footTotal = document.createElement('td');
+    footTotal.textContent = formatHoursForDisplay(total);
+    footRow.appendChild(footTotal);
+    tfoot.appendChild(footRow);
   }
-  const footTotal = document.createElement('td');
-  footTotal.textContent = formatHoursForDisplay(agg.weekTotal);
-  footRow.appendChild(footTotal);
-  tfoot.appendChild(footRow);
+
+  renderWeekSummary(agg);
+}
+
+function renderWeekSummary(agg) {
+  const share = core.billableShare(agg.billableWeekTotal, agg.weekTotal);
+  const shareEl = document.getElementById('week-billable-share');
+  shareEl.hidden = share === null;
+  shareEl.textContent =
+    share === null
+      ? ''
+      : t('weekShareLine')
+          .replace('{billable}', formatHoursForDisplay(agg.billableWeekTotal))
+          .replace('{nonBillable}', formatHoursForDisplay(agg.nonBillableWeekTotal))
+          .replace('{pct}', String(share));
+
+  const norm = state.settings.weeklyBillableNorm;
+  const normEl = document.getElementById('week-norm');
+  normEl.hidden = !(norm > 0);
+  if (!(norm > 0)) return;
+  const done = agg.billableWeekTotal;
+  const left = Math.max(0, Math.round((norm - done) * 100) / 100);
+  document.getElementById('week-norm-line').textContent = (left > 0 ? t('weekNormLine') : t('weekNormReached'))
+    .replace('{done}', formatHoursForDisplay(done))
+    .replace('{norm}', formatHoursForDisplay(norm))
+    .replace('{left}', formatHoursForDisplay(left));
+  const progress = document.getElementById('week-norm-progress');
+  progress.max = norm;
+  progress.value = Math.min(done, norm);
 }
 
 function formatHoursForDisplay(h) {
@@ -619,6 +759,11 @@ function renderSettings() {
   document.getElementById('settings-round-mode').value = state.settings.roundMode;
   document.getElementById('settings-hours-format').value = state.settings.hoursFormat;
   document.getElementById('settings-delete-weeks').value = state.settings.deleteOlderThanWeeks || '';
+  const normInput = document.getElementById('settings-weekly-norm');
+  if (document.activeElement !== normInput) {
+    const norm = state.settings.weeklyBillableNorm;
+    normInput.value = norm > 0 ? core.formatDecimalHours(norm, state.settings.language === 'nl' ? ',' : '.') : '';
+  }
 }
 
 document.getElementById('settings-round-unit').addEventListener('change', (e) => {
@@ -632,6 +777,13 @@ document.getElementById('settings-round-mode').addEventListener('change', (e) =>
 document.getElementById('settings-hours-format').addEventListener('change', (e) => {
   state = core.updateSettings(state, { hoursFormat: e.target.value });
   persist();
+});
+document.getElementById('settings-weekly-norm').addEventListener('change', (e) => {
+  const raw = e.target.value.trim().replace(',', '.');
+  const value = raw === '' ? null : Number(raw);
+  state = core.updateSettings(state, { weeklyBillableNorm: value > 0 && Number.isFinite(value) ? value : null });
+  persist();
+  renderSettings();
 });
 document.getElementById('settings-delete-weeks').addEventListener('change', (e) => {
   state = core.updateSettings(state, { deleteOlderThanWeeks: Number(e.target.value) || null });
