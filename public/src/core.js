@@ -192,16 +192,19 @@ export function pauseRunning(state, now) {
   return next;
 }
 
-// Starting a clock again also clears its Gereed mark for today: the time is
-// no longer final.
+// Time on a row changed after it was marked: it is no longer final (Gereed)
+// and the new total still has to be booked (overgenomen). Mutates `next`,
+// which the caller has already cloned.
+function reopenDay(next, clockId, day) {
+  const key = adjKey(clockId, day);
+  if (next.dayData[key]) next.dayData[key] = { ...next.dayData[key], ready: false, overgenomen: false };
+}
+
 export function startClock(state, clockId, now) {
   let next = state.running ? pauseRunning(state, now) : clone(state);
   next = clone(next);
   next.running = { clockId, startedAt: now };
-  const key = adjKey(clockId, dayKey(now));
-  if (next.dayData[key] && next.dayData[key].ready) {
-    next.dayData[key] = { ...next.dayData[key], ready: false };
-  }
+  reopenDay(next, clockId, dayKey(now));
   return next;
 }
 
@@ -260,7 +263,9 @@ export function elapsedForDay(state, clockId, day, now) {
 export function setManualElapsed(state, clockId, day, targetMs, now) {
   const next = clone(state);
   const raw = rawSegmentsTotalForDay(next, clockId, day, now);
-  next.adjustments[adjKey(clockId, day)] = targetMs - raw;
+  const key = adjKey(clockId, day);
+  if (raw + (next.adjustments[key] || 0) !== targetMs) reopenDay(next, clockId, day);
+  next.adjustments[key] = targetMs - raw;
   return next;
 }
 
@@ -337,6 +342,7 @@ export function addManualEntry(state, { dossier, day, ms, description = '', bill
   }
   const key = adjKey(clock.id, day);
   next.adjustments[key] = (next.adjustments[key] || 0) + ms;
+  reopenDay(next, clock.id, day);
   const text = description.trim();
   if (text) {
     const existing = getDescription(next, clock.id, day).trim();

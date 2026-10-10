@@ -57,7 +57,9 @@ Legal Sense "Timers" (chessclocks) page. Agreed in a grilling session on 2026-10
 
 - Gereed: pauses the clock (if running) and marks that clock's time for today as
   ready: the button shows "Gereed ✓" and the day summary row gets a "Gereed"
-  badge. Starting the clock again the same day clears the mark. The card stays
+  badge. Changing that day's time afterwards (starting the clock again, editing
+  the time, or a manual entry) clears both the Gereed mark and "overgenomen",
+  so added time is never left marked as already booked. The card stays
   for tomorrow.
 - Day summary: today by default, with previous / today / next day buttons
   (no future days), so a past day can still be entered. One row per clock with

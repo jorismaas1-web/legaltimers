@@ -600,3 +600,29 @@ test('a manual entry reuses an archived timer with the same dossier, and refuses
   assert.equal(core.addManualEntry(state, { dossier: '  ', day: '2026-10-09', ms: 3600000 }, now), null);
   assert.equal(core.addManualEntry(state, { dossier: 'Kantoor', day: '2026-10-09', ms: 0 }, now), null);
 });
+
+test('adding or changing time on a row clears its overgenomen and Gereed marks', () => {
+  const t0 = localMs(2026, 10, 8, 9, 0, 0);
+  const now = localMs(2026, 10, 8, 12, 0, 0);
+  const day = '2026-10-08';
+  let { state, clockId } = core.addClock(core.createInitialState(), { dossier: 'Acme / 1' }, t0);
+  state = core.startClock(state, clockId, t0);
+  state = core.markReady(state, clockId, day, t0 + 3600000);
+  const transferred = core.setOvergenomen(state, clockId, day, true);
+  const marks = (s) => {
+    const r = core.getDaySummaryRows(s, day, now)[0];
+    return [r.overgenomen, r.ready];
+  };
+  assert.deepEqual(marks(transferred), [true, true]);
+
+  const added = core.addManualEntry(transferred, { dossier: 'Acme / 1', day, ms: 15 * 60000 }, now).state;
+  assert.deepEqual(marks(added), [false, false]);
+
+  const edited = core.setManualElapsed(transferred, clockId, day, 2 * 3600000, now);
+  assert.deepEqual(marks(edited), [false, false]);
+  // entering the same time again is not a change
+  assert.deepEqual(marks(core.setManualElapsed(transferred, clockId, day, 3600000, now)), [true, true]);
+
+  const restarted = core.startClock(transferred, clockId, now);
+  assert.equal(core.getDaySummaryRows(restarted, day, now + 60000)[0].overgenomen, false);
+});
