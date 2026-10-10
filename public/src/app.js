@@ -489,8 +489,27 @@ function renderDay() {
       tdDossier.append(badge);
     }
 
+    // Editable: corrects the time for this day (0 removes the row).
     const tdExact = document.createElement('td');
-    tdExact.textContent = core.formatHMS(row.elapsedMs);
+    const exactInput = document.createElement('input');
+    exactInput.type = 'text';
+    exactInput.className = 'day-exact';
+    exactInput.value = core.formatHMS(row.elapsedMs);
+    exactInput.title = t('exactTimeTitle');
+    exactInput.autocomplete = 'off';
+    exactInput.addEventListener('click', (e) => e.stopPropagation());
+    exactInput.addEventListener('change', () => {
+      const ms = core.parseTimeInput(exactInput.value);
+      if (ms === null) {
+        exactInput.value = core.formatHMS(row.elapsedMs);
+        return;
+      }
+      state = core.setManualElapsed(state, row.clockId, day, ms, now());
+      persist();
+      renderDay();
+      tick();
+    });
+    tdExact.appendChild(exactInput);
 
     const tdHours = document.createElement('td');
     tdHours.append(hoursDisplay, copyButton(hoursDisplay, t('copyHours')));
@@ -635,6 +654,72 @@ document.getElementById('day-next-btn').addEventListener('click', () => shiftDay
 document.getElementById('day-today-btn').addEventListener('click', () => {
   dayCursor = null;
   renderDay();
+});
+
+// ---------- manual entries (Day view) ----------
+
+const manualForm = document.getElementById('manual-entry-form');
+const manualDossier = document.getElementById('manual-dossier');
+const manualTime = document.getElementById('manual-time');
+const manualDescription = document.getElementById('manual-description');
+const manualBillable = document.getElementById('manual-billable');
+const manualError = document.getElementById('manual-entry-error');
+
+function showManualError(key) {
+  manualError.textContent = key ? t(key) : '';
+  manualError.hidden = !key;
+}
+
+function closeManualForm() {
+  manualForm.reset();
+  showManualError(null);
+  manualForm.hidden = true;
+}
+
+document.getElementById('manual-entry-open').addEventListener('click', () => {
+  if (!manualForm.hidden) {
+    closeManualForm();
+    return;
+  }
+  manualForm.hidden = false;
+  manualTime.placeholder = t('manualTimePlaceholder');
+  manualBillable.checked = true;
+  manualDossier.focus();
+});
+document.getElementById('manual-entry-cancel').addEventListener('click', closeManualForm);
+
+// The billable box starts at what the dossier's timer has on that day.
+manualDossier.addEventListener('change', () => {
+  manualBillable.checked = core.billableForDossier(state, manualDossier.value, shownDay());
+});
+manualDescription.addEventListener('focus', () => {
+  fillSuggestions(document.getElementById('manual-description-suggestions'), manualDossier.value);
+});
+
+manualForm.addEventListener('submit', (e) => {
+  e.preventDefault();
+  if (!manualDossier.value.trim()) {
+    showManualError('manualErrorDossier');
+    manualDossier.focus();
+    return;
+  }
+  const ms = core.parseTimeInput(manualTime.value);
+  if (!(ms > 0)) {
+    showManualError('manualErrorTime');
+    manualTime.focus();
+    return;
+  }
+  const res = core.addManualEntry(
+    state,
+    { dossier: manualDossier.value, day: shownDay(), ms, description: manualDescription.value, billable: manualBillable.checked },
+    now(),
+  );
+  state = res.state;
+  persist();
+  closeManualForm();
+  renderDossierHistory();
+  renderDay();
+  renderCards();
 });
 
 document.getElementById('copy-day-table-btn').addEventListener('click', (e) => {

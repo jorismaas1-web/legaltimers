@@ -36,6 +36,9 @@ computer, dan zie je je tijden niet. Maak af en toe een backup
    dossiernummer, uren en omschrijving, in de volgorde van de
    urenregistratie. Vink **Overgenomen** aan (of klik op de regel) als je het
    hebt ingevoerd. Met **Vorige dag** kun je een eerdere dag alsnog invoeren.
+   Met **Tijd toevoegen** schrijf je tijd met de hand, bijv. voor een
+   telefoontje zonder timer of voor een eerdere dag. De exacte tijd in een
+   regel kun je aanpassen; met 0 haal je de regel weg.
    Per regel kun je declarabel alleen voor die dag omzetten. Onderaan staat
    het totaal, uitgesplitst in declarabel en niet declarabel.
 6. Tab **Week**: uren per dossier per dag, met totalen declarabel en niet

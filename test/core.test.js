@@ -547,3 +547,56 @@ test('a new card for a dossier set to non-billable earlier takes over that setti
   res = core.addClock(state, { dossier: 'Client / 1' }, t1);
   assert.equal(core.adoptBillableFromDossier(res.state, res.clockId, t1), res.state);
 });
+
+// ---- manual entries ----
+
+test('a manual entry for an unknown dossier is booked on that day without adding a timer card', () => {
+  const now = localMs(2026, 10, 10, 12, 0, 0);
+  const res = core.addManualEntry(
+    core.createInitialState(),
+    { dossier: ' Client / 2002100009 ', day: '2026-10-08', ms: 90 * 60000, description: 'Call', billable: true },
+    now,
+  );
+  const state = res.state;
+  assert.equal(core.activeClocks(state).length, 0);
+  const rows = core.getDaySummaryRows(state, '2026-10-08', now);
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].dossier, 'Client / 2002100009');
+  assert.equal(rows[0].elapsedMs, 90 * 60000);
+  assert.equal(rows[0].description, 'Call');
+  assert.equal(rows[0].billable, true);
+  assert.equal(state.dossierHistory[0], 'Client / 2002100009');
+});
+
+test('a manual entry for an existing timer adds to its row and joins the descriptions', () => {
+  const t0 = localMs(2026, 10, 8, 9, 0, 0);
+  let { state, clockId } = core.addClock(core.createInitialState(), { dossier: 'Acme / 1' }, t0);
+  state = core.startClock(state, clockId, t0);
+  state = core.pauseRunning(state, t0 + 30 * 60000);
+  state = core.setDescription(state, clockId, '2026-10-08', 'SPA review');
+  const now = localMs(2026, 10, 10, 12, 0, 0);
+  const res = core.addManualEntry(state, { dossier: 'Acme / 1', day: '2026-10-08', ms: 15 * 60000, description: 'Call', billable: false }, now);
+  assert.equal(res.clockId, clockId);
+  const rows = core.getDaySummaryRows(res.state, '2026-10-08', now);
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].elapsedMs, 45 * 60000);
+  assert.equal(rows[0].description, 'SPA review; Call');
+  assert.equal(rows[0].billable, false);
+  // other days of that timer are untouched
+  assert.equal(core.isBillable(res.state, clockId, '2026-10-09'), true);
+});
+
+test('a manual entry reuses an archived timer with the same dossier, and refuses empty input', () => {
+  const t0 = localMs(2026, 10, 5, 9, 0, 0);
+  let { state, clockId } = core.addClock(core.createInitialState(), { dossier: 'Kantoor' }, t0);
+  state = core.setClockBillable(state, clockId, false, t0);
+  state = core.removeClock(state, clockId, t0);
+  const now = localMs(2026, 10, 10, 12, 0, 0);
+  assert.equal(core.billableForDossier(state, 'Kantoor', '2026-10-10'), false);
+  assert.equal(core.billableForDossier(state, 'Nieuw', '2026-10-10'), true);
+  const res = core.addManualEntry(state, { dossier: 'Kantoor', day: '2026-10-09', ms: 3600000, billable: false }, now);
+  assert.equal(res.clockId, clockId);
+  assert.equal(res.state.clocks.length, 1);
+  assert.equal(core.addManualEntry(state, { dossier: '  ', day: '2026-10-09', ms: 3600000 }, now), null);
+  assert.equal(core.addManualEntry(state, { dossier: 'Kantoor', day: '2026-10-09', ms: 0 }, now), null);
+});

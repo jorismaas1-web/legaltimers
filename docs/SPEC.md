@@ -64,6 +64,15 @@ Legal Sense "Timers" (chessclocks) page. Agreed in a grilling session on 2026-10
   time that day > 0:
   dossier, exact time (h:mm:ss), rounded hours, description (free text,
   stored per day per clock), "overgenomen" checkbox.
+- Manual entries: "Tijd toevoegen" opens an inline form above the table
+  (dossier with autocomplete, time as h:mm / h:mm:ss / decimal, description
+  with suggestions, declarabel checkbox defaulting to what the dossier's
+  timer has that day) for the day shown, so past days work too. The time
+  adds to that dossier's timer for that day (stored as an adjustment);
+  descriptions are joined with "; ". A dossier without a timer gets an
+  archived one, so the entry shows in Day and Week but adds no card.
+- The exact time in each row is editable (same input formats); it sets
+  that day's time for the timer, and 0 removes the row.
 - Rounding: default 6-minute units, rounded up (7 min -> 0.2 h). Setting:
   unit 1/5/6/10/15 min, mode up/nearest. Display format setting: decimal (1.7)
   or h:mm (1:42). Less than 30 seconds on a day (a misclick) rounds to 0 and

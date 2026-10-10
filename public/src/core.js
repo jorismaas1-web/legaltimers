@@ -304,6 +304,49 @@ export function isReady(state, clockId, day) {
   return getDayData(state, clockId, day).ready;
 }
 
+// ---------- manual entries ----------
+
+// The timer an entry for this dossier belongs to: a card first, else the
+// most recent deleted card with that dossier.
+function findClockByDossier(state, dossier) {
+  const value = (dossier || '').trim();
+  if (!value) return null;
+  const same = state.clocks.filter((c) => (c.dossier || '').trim() === value);
+  return same.find((c) => !c.archived) || same.sort((a, b) => b.createdAt - a.createdAt)[0] || null;
+}
+
+export function billableForDossier(state, dossier, day) {
+  const clock = findClockByDossier(state, dossier);
+  return clock ? isBillable(state, clock.id, day) : true;
+}
+
+// Books time written by hand on a day. It adds to the dossier's timer for
+// that day; a dossier without a timer gets one that stays off the Timers
+// grid (archived), so the entry only shows in Day and Week. Returns
+// { state, clockId }, or null for an empty dossier or no time.
+export function addManualEntry(state, { dossier, day, ms, description = '', billable = true }, now) {
+  const value = (dossier || '').trim();
+  if (!value || !(ms > 0)) return null;
+  let next = clone(state);
+  let clock = findClockByDossier(next, value);
+  if (!clock) {
+    const res = addClock(next, { dossier: value }, now);
+    next = res.state;
+    next.clocks = next.clocks.map((c) => (c.id === res.clockId ? { ...c, archived: true } : c));
+    clock = next.clocks.find((c) => c.id === res.clockId);
+  }
+  const key = adjKey(clock.id, day);
+  next.adjustments[key] = (next.adjustments[key] || 0) + ms;
+  const text = description.trim();
+  if (text) {
+    const existing = getDescription(next, clock.id, day).trim();
+    next = setDescription(next, clock.id, day, existing ? `${existing}; ${text}` : text);
+  }
+  next = setDayBillable(next, clock.id, day, billable);
+  next = recordDossierUsed(next, value);
+  return { state: next, clockId: clock.id };
+}
+
 // ---------- billable / non-billable ----------
 
 export function clockBillableDefault(state, clockId, day) {

@@ -49,7 +49,26 @@
     <button type="button" id="day-prev-btn" data-i18n="dayPrev">Vorige dag</button>
     <button type="button" id="day-today-btn" data-i18n="dayToday">Vandaag</button>
     <button type="button" id="day-next-btn" data-i18n="dayNext">Volgende dag</button>
+    <button type="button" id="manual-entry-open" data-i18n="manualEntryOpen">Tijd toevoegen</button>
   </div>
+  <form id="manual-entry-form" class="manual-entry" hidden>
+    <label class="field manual-dossier"><span data-i18n="colDossier">Dossier</span>
+      <input type="text" id="manual-dossier" list="dossier-history" autocomplete="off">
+    </label>
+    <label class="field manual-time"><span data-i18n="manualTime">Tijd</span>
+      <input type="text" id="manual-time" inputmode="decimal" autocomplete="off">
+    </label>
+    <label class="field manual-description"><span data-i18n="colDescription">Omschrijving</span>
+      <input type="text" id="manual-description" list="manual-description-suggestions" autocomplete="off">
+    </label>
+    <datalist id="manual-description-suggestions"></datalist>
+    <label class="manual-billable"><input type="checkbox" id="manual-billable" checked> <span data-i18n="billable">Declarabel</span></label>
+    <div class="manual-actions">
+      <button type="submit" data-i18n="manualAdd">Toevoegen</button>
+      <button type="button" id="manual-entry-cancel" data-i18n="cancel">Annuleren</button>
+    </div>
+    <p id="manual-entry-error" class="field-error manual-error" hidden></p>
+  </form>
   <h2 id="day-title">Tijdsoverzicht vandaag</h2>
   <p id="day-empty" class="day-empty" data-i18n="dayEmpty" hidden>Geen tijd geschreven op deze dag.</p>
   <div class="table-scroll">

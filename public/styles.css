@@ -518,3 +518,49 @@ body.has-notice main {
   color: var(--danger);
   font-size: 0.85em;
 }
+
+.manual-entry {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 0.6em 0.8em;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 0.9em;
+  margin-bottom: 1em;
+}
+
+.manual-dossier {
+  flex: 2 1 16em;
+}
+
+.manual-time {
+  flex: 0 1 7em;
+}
+
+.manual-description {
+  flex: 3 1 16em;
+}
+
+.manual-billable {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35em;
+  padding-bottom: 0.45em;
+}
+
+.manual-actions {
+  display: flex;
+  gap: 0.5em;
+}
+
+.manual-error {
+  flex-basis: 100%;
+  margin: 0;
+}
+
+.day-exact {
+  width: 6.5em;
+  font-variant-numeric: tabular-nums;
+}
