@@ -372,9 +372,11 @@ function tick() {
   const n = now();
 
   // Past midnight with the page open: cards, day and week show the new day.
+  // Rendering the day view replaces its inputs, so a description still being
+  // typed there is saved first (blur fires its change handler).
   if (lastTickDay !== null && lastTickDay !== day) {
     lastTickDay = day;
-    dayCursor = null;
+    if (document.getElementById('view-day').contains(document.activeElement)) document.activeElement.blur();
     renderCards();
     renderDay();
     renderWeek();
