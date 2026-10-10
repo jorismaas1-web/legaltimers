@@ -4,16 +4,22 @@
 
 export const SCHEMA_VERSION = 1;
 
+// Less than this on a day (a misclick on 1-9) is not time worth booking.
+export const MIN_BOOKABLE_MS = 30 * 1000;
+
 // ---------- state shape ----------
 //
 // state = {
 //   schemaVersion: 1,
-//   clocks: [{ id, dossier, createdAt, archived?, billable? }],  // billable defaults to true
+//   clocks: [{ id, dossier, createdAt, archived?, billableChanges? }],
+//     // billableChanges: [[day, bool], ...] ascending; the last one at or before
+//     // a day is the card default for that day; none = billable
 //   segments: [{ clockId, start, end }],      // finalized, each within one local day
 //   running: { clockId, startedAt } | null,   // at most one clock runs
 //   adjustments: { "<clockId>__<day>": deltaMs },
-//   dayData: { "<clockId>__<day>": { description, overgenomen, ready, billable? } },
-//                                      // billable unset = follow the clock's default
+//   dayData: { "<clockId>__<day>": { description, dossier?, overgenomen, ready, billable? } },
+//     // dossier: the dossier line when the description was saved
+//     // billable unset = follow the card default
 //   longRunDecisions: { "<clockId>__<startedAt>": "keep" | { correctedEnd } },
 //   settings: {
 //     roundUnitMinutes, roundMode, hoursFormat,
@@ -221,6 +227,30 @@ function rawSegmentsTotalForDay(state, clockId, day, now) {
   return total;
 }
 
+// Every clock's time for one day in a single pass over the segments.
+// Segments never cross midnight, so comparing `start` against the day's
+// bounds is enough.
+export function elapsedByClock(state, day, now) {
+  const dayStart = new Date(`${day}T00:00:00`).getTime();
+  const dayEnd = addDays(dayStart, 1);
+  const out = new Map();
+  const add = (id, ms) => out.set(id, (out.get(id) || 0) + ms);
+  for (const s of state.segments) {
+    if (s.start >= dayStart && s.start < dayEnd) add(s.clockId, s.end - s.start);
+  }
+  if (state.running) {
+    const { clockId, startedAt } = state.running;
+    const start = Math.max(startedAt, dayStart);
+    const end = Math.min(now, dayEnd);
+    if (end > start) add(clockId, end - start);
+  }
+  const suffix = `__${day}`;
+  for (const [key, ms] of Object.entries(state.adjustments)) {
+    if (key.endsWith(suffix)) add(key.slice(0, -suffix.length), ms);
+  }
+  return out;
+}
+
 export function elapsedForDay(state, clockId, day, now) {
   const raw = rawSegmentsTotalForDay(state, clockId, day, now);
   const adj = state.adjustments[adjKey(clockId, day)] || 0;
@@ -234,12 +264,6 @@ export function setManualElapsed(state, clockId, day, targetMs, now) {
   return next;
 }
 
-export function totalForDayAllClocks(state, day, now) {
-  let total = 0;
-  for (const c of state.clocks) total += elapsedForDay(state, c.id, day, now);
-  return total;
-}
-
 // ---------- day data (description / overgenomen / ready) ----------
 
 function getDayData(state, clockId, day) {
@@ -250,10 +274,14 @@ export function getDescription(state, clockId, day) {
   return getDayData(state, clockId, day).description || '';
 }
 
+// Also remembers the dossier line, so suggestions stay with the dossier the
+// text was written for even if the card is later renamed.
 export function setDescription(state, clockId, day, description) {
   const next = clone(state);
   const key = adjKey(clockId, day);
-  next.dayData[key] = { ...getDayData(next, clockId, day), description };
+  const clock = next.clocks.find((c) => c.id === clockId);
+  const dossier = ((clock && clock.dossier) || '').trim();
+  next.dayData[key] = { ...getDayData(next, clockId, day), description, dossier };
   return next;
 }
 
@@ -278,15 +306,19 @@ export function isReady(state, clockId, day) {
 
 // ---------- billable / non-billable ----------
 
-export function clockBillableDefault(state, clockId) {
+export function clockBillableDefault(state, clockId, day) {
   const clock = state.clocks.find((c) => c.id === clockId);
-  return !clock || clock.billable !== false;
+  let value = true;
+  for (const [from, billable] of (clock && clock.billableChanges) || []) {
+    if (from <= day) value = billable;
+  }
+  return value;
 }
 
 export function isBillable(state, clockId, day) {
   const dd = state.dayData[adjKey(clockId, day)];
   if (dd && typeof dd.billable === 'boolean') return dd.billable;
-  return clockBillableDefault(state, clockId);
+  return clockBillableDefault(state, clockId, day);
 }
 
 export function setDayBillable(state, clockId, day, value) {
@@ -296,51 +328,50 @@ export function setDayBillable(state, clockId, day, value) {
   return next;
 }
 
-function daysWithData(state, clockId) {
-  const days = new Set();
-  for (const s of state.segments) if (s.clockId === clockId) days.add(dayKey(s.start));
-  if (state.running && state.running.clockId === clockId) days.add(dayKey(state.running.startedAt));
-  for (const key of [...Object.keys(state.adjustments), ...Object.keys(state.dayData)]) {
-    const [id, day] = key.split('__');
-    if (id === clockId && day) days.add(day);
-  }
-  return days;
-}
-
-// Sets the timer's default from today on. Earlier days that followed the old
-// default get it written down, so switching a card never rewrites history;
-// today drops any per-day choice and follows the card.
+// The card toggle: sets the default from today on (earlier days keep the
+// default they had) and drops any per-day choice for today.
 export function setClockBillable(state, clockId, value, now) {
   const next = clone(state);
   const today = dayKey(now);
-  const oldDefault = clockBillableDefault(state, clockId);
-  for (const day of daysWithData(state, clockId)) {
-    if (day >= today) continue;
-    const key = adjKey(clockId, day);
-    const dd = getDayData(next, clockId, day);
-    if (typeof dd.billable !== 'boolean') next.dayData[key] = { ...dd, billable: oldDefault };
-  }
   const todayKey = adjKey(clockId, today);
   if (next.dayData[todayKey]) {
     const { billable, ...rest } = next.dayData[todayKey];
     next.dayData[todayKey] = rest;
   }
-  next.clocks = next.clocks.map((c) => (c.id === clockId ? { ...c, billable: !!value } : c));
+  next.clocks = next.clocks.map((c) =>
+    c.id === clockId
+      ? { ...c, billableChanges: [...(c.billableChanges || []).filter(([d]) => d < today), [today, !!value]] }
+      : c,
+  );
   return next;
 }
 
-// Rounded hours for a day, split by billable flag. Each row is rounded on its
-// own (that is what gets booked), then summed.
-export function daySplit(state, day, now, settings) {
+// A card that gets the dossier of an earlier card (e.g. an internal dossier
+// recreated next week) takes over that card's billable setting.
+export function adoptBillableFromDossier(state, clockId, now) {
+  const clock = state.clocks.find((c) => c.id === clockId);
+  const dossier = ((clock && clock.dossier) || '').trim();
+  if (!clock || !dossier || (clock.billableChanges || []).length > 0) return state;
+  const today = dayKey(now);
+  const earlier = state.clocks
+    .filter((c) => c.id !== clockId && (c.dossier || '').trim() === dossier && (c.billableChanges || []).length > 0)
+    .sort((a, b) => b.createdAt - a.createdAt)[0];
+  if (!earlier || clockBillableDefault(state, earlier.id, today)) return state;
+  return setClockBillable(state, clockId, false, now);
+}
+
+// Rounded time for day-summary rows, split by billable flag. Each row is
+// rounded on its own (that is what gets booked); sums are kept in whole
+// minutes so h:mm totals never drift.
+export function daySplit(rows, settings) {
   let billable = 0;
   let nonBillable = 0;
-  for (const c of state.clocks) {
-    const h = roundHoursMs(elapsedForDay(state, c.id, day, now), settings.roundUnitMinutes, settings.roundMode);
-    if (h <= 0) continue;
-    if (isBillable(state, c.id, day)) billable += h;
-    else nonBillable += h;
+  for (const r of rows) {
+    const m = roundMinutes(r.elapsedMs, settings.roundUnitMinutes, settings.roundMode);
+    if (r.billable) billable += m;
+    else nonBillable += m;
   }
-  return { total: round2(billable + nonBillable), billable: round2(billable), nonBillable: round2(nonBillable) };
+  return { total: (billable + nonBillable) / 60, billable: billable / 60, nonBillable: nonBillable / 60 };
 }
 
 export function billableShare(billableHours, totalHours) {
@@ -355,12 +386,14 @@ export function billableShare(billableHours, totalHours) {
 export function descriptionSuggestions(state, dossier, limit = 30) {
   const target = (dossier || '').trim();
   if (!target) return [];
+  // Older entries without a dossier snapshot fall back to the card's dossier.
   const ids = new Set(state.clocks.filter((c) => (c.dossier || '').trim() === target).map((c) => c.id));
   const entries = [];
   for (const [key, dd] of Object.entries(state.dayData)) {
     const [id, day] = key.split('__');
     const text = (dd && typeof dd.description === 'string' ? dd.description : '').trim();
-    if (ids.has(id) && text) entries.push({ day, text });
+    const sameDossier = typeof dd.dossier === 'string' ? dd.dossier === target : ids.has(id);
+    if (sameDossier && text) entries.push({ day, text });
   }
   entries.sort((a, b) => (a.day < b.day ? 1 : a.day > b.day ? -1 : 0));
   const out = [];
@@ -372,10 +405,11 @@ export function descriptionSuggestions(state, dossier, limit = 30) {
 }
 
 export function getDaySummaryRows(state, day, now) {
+  const byClock = elapsedByClock(state, day, now);
   const rows = [];
   for (const c of state.clocks) {
-    const elapsed = elapsedForDay(state, c.id, day, now);
-    if (elapsed <= 0) continue;
+    const elapsed = byClock.get(c.id) || 0;
+    if (elapsed < MIN_BOOKABLE_MS) continue;
     const dd = getDayData(state, c.id, day);
     rows.push({
       clockId: c.id,
@@ -404,19 +438,18 @@ function round2(x) {
   return Math.round((x + 1e-9) * 100) / 100;
 }
 
-export function roundHoursMs(ms, unitMinutes, mode) {
-  if (ms <= 0) return 0;
+// Rounded time in whole minutes (a multiple of the unit).
+export function roundMinutes(ms, unitMinutes, mode) {
+  if (ms < MIN_BOOKABLE_MS) return 0;
   const unitMs = unitMinutes * 60 * 1000;
-  let units;
-  if (mode === 'nearest') {
-    units = Math.round(ms / unitMs);
-  } else {
-    // 'up': any time beyond an exact multiple of the unit rounds up to the
-    // next unit; an exact multiple stays as-is.
-    units = Math.ceil((ms - 1) / unitMs);
-  }
-  const minutes = units * unitMinutes;
-  return round2(minutes / 60);
+  // 'up': any time beyond an exact multiple of the unit rounds up to the
+  // next unit; an exact multiple stays as-is.
+  const units = mode === 'nearest' ? Math.round(ms / unitMs) : Math.ceil((ms - 1) / unitMs);
+  return units * unitMinutes;
+}
+
+export function roundHoursMs(ms, unitMinutes, mode) {
+  return round2(roundMinutes(ms, unitMinutes, mode) / 60);
 }
 
 // ---------- formatting ----------
@@ -507,11 +540,13 @@ function tsvField(v) {
   return String(v ?? '').replace(/[\t\r\n]+/g, ' ');
 }
 
-export function buildDayTSV(rows) {
-  const header = ['date', 'dossier', 'hours', 'description', 'billable'];
-  const lines = [header.join('\t')];
+export const TSV_COLUMNS = ['date', 'project', 'dossier', 'hours', 'description', 'billable'];
+
+// `header` maps each column to its label (defaults to the column names).
+export function buildDayTSV(rows, header = {}) {
+  const lines = [TSV_COLUMNS.map((c) => tsvField(header[c] ?? c)).join('\t')];
   for (const r of rows) {
-    lines.push([r.date, r.dossier, r.hours, r.description, r.billable].map(tsvField).join('\t'));
+    lines.push(TSV_COLUMNS.map((c) => tsvField(r[c])).join('\t'));
   }
   return lines.join('\n');
 }
@@ -519,46 +554,46 @@ export function buildDayTSV(rows) {
 // ---------- week aggregation ----------
 
 export function aggregateWeek(state, weekStartMs, now, settings) {
-  const unitMinutes = settings.roundUnitMinutes;
-  const mode = settings.roundMode;
   const days = [];
   for (let i = 0; i < 7; i++) days.push(dayKey(addDays(weekStartMs, i)));
+  const byDay = days.map((day) => elapsedByClock(state, day, now));
 
   const rows = [];
+  const minutes = { all: [0, 0, 0, 0, 0, 0, 0], billable: [0, 0, 0, 0, 0, 0, 0] };
   for (const c of state.clocks) {
-    const hours = days.map((day) => roundHoursMs(elapsedForDay(state, c.id, day, now), unitMinutes, mode));
-    const total = round2(hours.reduce((a, b) => a + b, 0));
-    const hasAny = hours.some((h) => h > 0);
-    if (!hasAny) continue;
+    const mins = byDay.map((m) => roundMinutes(m.get(c.id) || 0, settings.roundUnitMinutes, settings.roundMode));
+    if (!mins.some((m) => m > 0)) continue;
     const billable = days.map((day) => isBillable(state, c.id, day));
-    rows.push({ clockId: c.id, dossier: c.dossier, hours, billable, total });
+    mins.forEach((m, i) => {
+      minutes.all[i] += m;
+      if (billable[i]) minutes.billable[i] += m;
+    });
+    const hours = mins.map((m) => m / 60);
+    rows.push({ clockId: c.id, dossier: c.dossier, hours, billable, total: sumOf(mins) / 60 });
   }
 
-  const sumDay = (i, wantBillable) =>
-    round2(rows.reduce((a, r) => a + (wantBillable === undefined || r.billable[i] === wantBillable ? r.hours[i] : 0), 0));
-  const dayTotals = days.map((_, i) => sumDay(i));
-  const billableDayTotals = days.map((_, i) => sumDay(i, true));
-  const nonBillableDayTotals = days.map((_, i) => sumDay(i, false));
-  const sum = (xs) => round2(xs.reduce((a, b) => a + b, 0));
-
+  const toHours = (xs) => xs.map((m) => m / 60);
   return {
     days,
     rows,
-    dayTotals,
-    weekTotal: sum(dayTotals),
-    billableDayTotals,
-    nonBillableDayTotals,
-    billableWeekTotal: sum(billableDayTotals),
-    nonBillableWeekTotal: sum(nonBillableDayTotals),
+    dayTotals: toHours(minutes.all),
+    weekTotal: sumOf(minutes.all) / 60,
+    billableDayTotals: toHours(minutes.billable),
+    nonBillableDayTotals: minutes.all.map((m, i) => (m - minutes.billable[i]) / 60),
+    billableWeekTotal: sumOf(minutes.billable) / 60,
+    nonBillableWeekTotal: (sumOf(minutes.all) - sumOf(minutes.billable)) / 60,
   };
 }
 
+function sumOf(xs) {
+  return xs.reduce((a, b) => a + b, 0);
+}
+
 export function weekHasUnprocessed(state, day, now) {
+  const byClock = elapsedByClock(state, day, now);
   for (const c of state.clocks) {
-    const elapsed = elapsedForDay(state, c.id, day, now);
-    if (elapsed <= 0) continue;
-    const dd = getDayData(state, c.id, day);
-    if (!dd.overgenomen) return true;
+    if ((byClock.get(c.id) || 0) < MIN_BOOKABLE_MS) continue;
+    if (!getDayData(state, c.id, day).overgenomen) return true;
   }
   return false;
 }

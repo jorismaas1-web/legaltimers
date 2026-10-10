@@ -46,10 +46,13 @@ export function validateBackupShape(data) {
 // stamps the current schema version defensively.
 export function normalizeState(data) {
   const initial = createInitialState();
+  const settings = { ...initial.settings, ...data.settings };
+  const norm = settings.weeklyBillableNorm;
+  if (!(typeof norm === 'number' && Number.isFinite(norm) && norm > 0)) settings.weeklyBillableNorm = null;
   return {
     ...initial,
     ...data,
-    settings: { ...initial.settings, ...data.settings },
+    settings,
     dossierHistory: Array.isArray(data.dossierHistory) ? data.dossierHistory : [],
     longRunDecisions: isPlainObject(data.longRunDecisions) ? data.longRunDecisions : {},
     schemaVersion: SCHEMA_VERSION,

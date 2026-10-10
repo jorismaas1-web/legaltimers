@@ -430,9 +430,9 @@ button:disabled {
 }
 
 .billable-toggle.is-nonbillable {
-  color: var(--muted);
-  border-color: var(--border);
-  border-style: dashed;
+  color: var(--text);
+  background: var(--banner-bg);
+  border-color: var(--banner-border);
 }
 
 .card-description {
@@ -442,7 +442,10 @@ button:disabled {
 .row-nonbillable td:first-child,
 .cell-nonbillable {
   font-style: italic;
-  color: var(--muted);
+}
+
+.cell-nonbillable {
+  background: var(--banner-bg);
 }
 
 tfoot td {
@@ -470,4 +473,48 @@ tfoot .week-foot-split td {
   max-width: 420px;
   height: 0.8em;
   accent-color: var(--accent);
+}
+
+/* Day table: the dossier wraps and the description (AFAS Toelichting) gets
+   the room, so the table fits without sideways scrolling on a laptop. */
+.day-table td:first-child {
+  white-space: normal;
+  min-width: 14em;
+}
+
+.day-table td:nth-child(4) {
+  width: 40%;
+}
+
+.day-table td:nth-child(4) input {
+  width: calc(100% - 2.2em);
+  min-width: 10em;
+}
+
+.week-day-btn {
+  display: block;
+  width: 100%;
+  text-align: left;
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.week-day-dot::after {
+  content: " \25CF" / "";
+}
+
+body.has-notice main {
+  padding-bottom: 10em;
+}
+
+.field-error {
+  color: var(--danger);
+  font-size: 0.85em;
 }

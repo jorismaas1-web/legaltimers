@@ -85,7 +85,7 @@
       <tfoot id="week-table-foot"></tfoot>
     </table>
   </div>
-  <p class="week-legend" data-i18n="weekLegendNonBillable">Cursief = niet declarabel</p>
+  <p class="week-legend" data-i18n="weekLegendNonBillable">Gekleurd en cursief = niet declarabel</p>
   <div id="week-billable-summary" class="billable-summary">
     <p id="week-billable-share"></p>
     <div id="week-norm" class="week-norm" hidden>
@@ -125,6 +125,7 @@
     <label class="field">
       <span data-i18n="settingsWeeklyNorm">Weeknorm declarabele uren (leeg = uit)</span>
       <input type="text" id="settings-weekly-norm" name="weeklyNorm" inputmode="decimal" autocomplete="off">
+      <span id="settings-weekly-norm-error" class="field-error" data-i18n="settingsWeeklyNormInvalid" hidden>Niet herkend. Vul een aantal uren in, bijv. 37,5.</span>
     </label>
     <label class="field">
       <span data-i18n="settingsDeleteOld">Verwijder alles ouder dan (weken)</span>

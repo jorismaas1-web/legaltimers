@@ -96,3 +96,13 @@ test('normalizeState fills missing settings with defaults (e.g. a hand-edited ba
   assert.equal(s.settings.hoursFormat, 'decimal');
   assert.ok(Array.isArray(s.dossierHistory));
 });
+
+test('normalizeState drops a weekly billable target that is not a positive number', () => {
+  const base = core.createInitialState();
+  for (const bad of ['37.5', -3, 0, 'abc', null]) {
+    const out = storage.normalizeState({ ...base, settings: { ...base.settings, weeklyBillableNorm: bad } });
+    assert.equal(out.settings.weeklyBillableNorm, null, String(bad));
+  }
+  const ok = storage.normalizeState({ ...base, settings: { ...base.settings, weeklyBillableNorm: 37.5 } });
+  assert.equal(ok.settings.weeklyBillableNorm, 37.5);
+});

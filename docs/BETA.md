@@ -39,7 +39,7 @@ computer, dan zie je je tijden niet. Maak af en toe een backup
    Per regel kun je declarabel alleen voor die dag omzetten. Onderaan staat
    het totaal, uitgesplitst in declarabel en niet declarabel.
 6. Tab **Week**: uren per dossier per dag, met totalen declarabel en niet
-   declarabel (niet declarabel staat cursief). Een stip bij een dag betekent
+   declarabel (niet declarabel is gekleurd). Een stip bij een dag betekent
    dat daar nog iets niet is overgenomen; klik op de dag om hem te openen.
    Zet in **Instellingen** een weeknorm voor declarabele uren, dan zie je
    hier hoe ver je bent.

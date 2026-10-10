@@ -33,8 +33,14 @@ function withLanguage(s) {
   return core.updateSettings(s, { language: detectLanguage(navigator.language) });
 }
 
-function t(key) {
-  return translate(state.settings.language, key);
+function t(key, vars) {
+  let text = translate(state.settings.language, key);
+  for (const [name, value] of Object.entries(vars || {})) text = text.replaceAll(`{${name}}`, String(value));
+  return text;
+}
+
+function decimalSeparator() {
+  return state.settings.language === 'nl' ? ',' : '.';
 }
 
 function persist() {
@@ -154,14 +160,20 @@ function createCardElement(clock) {
   dossierInput.addEventListener('change', () => {
     state = core.updateClock(state, clock.id, { dossier: dossierInput.value });
     state = core.recordDossierUsed(state, dossierInput.value);
+    state = core.adoptBillableFromDossier(state, clock.id, now());
     persist();
     renderDossierHistory();
-    fillSuggestions(descList, dossierInput.value);
+    renderCards();
   });
   // The card's description is today's description, the same text the day
-  // summary shows and copies into AFAS.
+  // summary shows and copies into AFAS. It is saved to the day typing
+  // started on, so text begun before midnight stays on that day.
+  descInput.addEventListener('focus', () => {
+    descInput.dataset.day = today();
+    fillSuggestions(descList, dossierInput.value);
+  });
   descInput.addEventListener('change', () => {
-    state = core.setDescription(state, clock.id, today(), descInput.value);
+    state = core.setDescription(state, clock.id, descInput.dataset.day || today(), descInput.value);
     persist();
   });
   billableBtn.addEventListener('click', () => {
@@ -229,13 +241,15 @@ function renderCards() {
     entry.dossierInput.placeholder = t('dossierPlaceholder');
     entry.descInput.placeholder = t('descriptionPlaceholder');
     syncCardDescription(entry, clock.id, day);
-    fillSuggestions(entry.descList, clock.dossier);
     entry.node.classList.toggle('is-running', running);
     entry.node.classList.toggle('is-ready', ready);
     entry.node.classList.toggle('is-nonbillable', !billable);
     entry.startPauseBtn.textContent = running ? t('pause') : t('start');
     entry.readyBtn.textContent = ready ? `${t('ready')} ✓` : t('ready');
     setBillableToggle(entry.billableBtn, billable, t('cardBillableTitle'));
+    if (billable !== core.clockBillableDefault(state, clock.id, day)) {
+      entry.billableBtn.textContent += ` (${t('todayOnly')})`;
+    }
     entry.deleteBtn.setAttribute('aria-label', t('deleteTimer'));
     entry.deleteBtn.title = t('deleteTimer');
   }
@@ -253,7 +267,6 @@ function renderCards() {
     focusNewDossierFor = null;
   }
 
-  updateLongRunBanner();
   tick();
 }
 
@@ -338,7 +351,7 @@ document.getElementById('long-run-correct').addEventListener('click', () => {
   if (!state.running) return;
   const started = new Date(state.running.startedAt);
   const startedLabel = `${started.getHours()}:${String(started.getMinutes()).padStart(2, '0')}`;
-  const answer = window.prompt(t('longRunCorrectPrompt').replace('{start}', startedLabel), '');
+  const answer = window.prompt(t('longRunCorrectPrompt', { start: startedLabel }), '');
   if (answer === null) return;
   const correctedEnd = core.resolveEndTime(state.running.startedAt, answer, now());
   if (correctedEnd === null) {
@@ -352,30 +365,48 @@ document.getElementById('long-run-correct').addEventListener('click', () => {
 
 // ---------- tick (live display) ----------
 
+let lastTickDay = null;
+
 function tick() {
   const day = today();
   const n = now();
 
+  // Past midnight with the page open: cards, day and week show the new day.
+  if (lastTickDay !== null && lastTickDay !== day) {
+    lastTickDay = day;
+    dayCursor = null;
+    renderCards();
+    renderDay();
+    renderWeek();
+    return;
+  }
+  lastTickDay = day;
+
+  const byClock = core.elapsedByClock(state, day, n);
   for (const clock of core.activeClocks(state)) {
     const entry = cardEls.get(clock.id);
     if (!entry) continue;
     if (document.activeElement !== entry.timeInput) {
-      entry.timeInput.value = core.formatHMS(core.elapsedForDay(state, clock.id, day, n));
+      entry.timeInput.value = core.formatHMS(byClock.get(clock.id) || 0);
     }
     syncCardDescription(entry, clock.id, day);
   }
 
-  const totalMs = core.totalForDayAllClocks(state, day, n);
-  document.getElementById('header-today-total').textContent = core.formatHMS(totalMs);
-  const split = core.daySplit(state, day, n, state.settings);
+  const rows = core.getDaySummaryRows(state, day, n);
+  document.getElementById('header-today-total').textContent = core.formatHMS(rows.reduce((a, r) => a + r.elapsedMs, 0));
+  const split = core.daySplit(rows, state.settings);
   document.getElementById('header-billable-split').textContent =
     split.total > 0
-      ? `· ${t('billable').toLowerCase()} ${formatHoursForDisplay(split.billable)} ${t('hoursShort')} · ${t('nonBillable').toLowerCase()} ${formatHoursForDisplay(split.nonBillable)} ${t('hoursShort')}`
+      ? t('headerSplit', {
+          total: formatHoursForDisplay(split.total),
+          billable: formatHoursForDisplay(split.billable),
+          nonBillable: formatHoursForDisplay(split.nonBillable),
+        })
       : '';
 
   if (state.running) {
     const clock = state.clocks.find((c) => c.id === state.running.clockId);
-    const elapsedToday = core.elapsedForDay(state, state.running.clockId, day, n);
+    const elapsedToday = byClock.get(state.running.clockId) || 0;
     const label = core.formatHM(elapsedToday / 3600000);
     document.title = clock && clock.dossier ? `▶ ${label} · ${clock.dossier}` : `▶ ${label}`;
   } else {
@@ -469,8 +500,8 @@ function renderDay() {
     descInput.autocomplete = 'off';
     const descList = document.createElement('datalist');
     descList.id = `day-desc-suggestions-${row.clockId}`;
-    fillSuggestions(descList, row.dossier);
     descInput.setAttribute('list', descList.id);
+    descInput.addEventListener('focus', () => fillSuggestions(descList, row.dossier));
     descInput.addEventListener('click', (e) => e.stopPropagation());
     descInput.addEventListener('change', () => {
       state = core.setDescription(state, row.clockId, day, descInput.value);
@@ -515,25 +546,29 @@ function renderDay() {
     tbody.appendChild(tr);
   }
 
-  renderDayFoot(day, n, rows.length > 0);
+  renderDayFoot(rows);
 }
 
-function renderDayFoot(day, n, hasRows) {
+function renderDayFoot(rows) {
   const tfoot = document.getElementById('day-table-foot');
   tfoot.innerHTML = '';
-  if (!hasRows) return;
-  const split = core.daySplit(state, day, n, state.settings);
+  if (rows.length === 0) return;
+  const split = core.daySplit(rows, state.settings);
+  const share = core.billableShare(split.billable, split.total);
   const tr = document.createElement('tr');
   const label = document.createElement('td');
   label.textContent = t('weekTotalRow');
   const exact = document.createElement('td');
+  exact.textContent = core.formatHMS(rows.reduce((a, r) => a + r.elapsedMs, 0));
   const hours = document.createElement('td');
   hours.textContent = formatHoursForDisplay(split.total);
   const detail = document.createElement('td');
   detail.colSpan = 3;
-  detail.textContent = `${t('billable')} ${formatHoursForDisplay(split.billable)} · ${t('nonBillable')} ${formatHoursForDisplay(
-    split.nonBillable,
-  )} · ${t('billableShareLabel').replace('{pct}', String(core.billableShare(split.billable, split.total)))}`;
+  detail.textContent = t(share === null ? 'daySplitLine' : 'daySplitLineShare', {
+    billable: formatHoursForDisplay(split.billable),
+    nonBillable: formatHoursForDisplay(split.nonBillable),
+    pct: share,
+  });
   tr.append(label, exact, hours, detail);
   tfoot.appendChild(tr);
 }
@@ -608,13 +643,15 @@ document.getElementById('copy-day-table-btn').addEventListener('click', (e) => {
     const hoursDisplay = formatHoursForDisplay(roundedHours);
     return {
       date: day,
+      project: core.extractDossierNumber(row.dossier),
       dossier: row.dossier,
       hours: hoursDisplay,
       description: row.description,
       billable: row.billable ? t('yes') : t('no'),
     };
   });
-  copyToClipboard(core.buildDayTSV(rows), e.currentTarget);
+  const header = Object.fromEntries(core.TSV_COLUMNS.map((c) => [c, t(`tsv_${c}`)]));
+  copyToClipboard(core.buildDayTSV(rows, header), e.currentTarget);
 });
 
 // ---------- Week view ----------
@@ -643,14 +680,21 @@ function renderWeek() {
     const btn = document.createElement('button');
     btn.type = 'button';
     btn.className = 'week-day-btn';
-    btn.textContent = labels[i];
+    const [, m, d] = day.split('-').map(Number);
+    btn.textContent = `${labels[i]} ${d}/${m}`;
     btn.title = `${t('openDay')}: ${formatDayLabel(day)}`;
     btn.addEventListener('click', () => {
       dayCursor = day >= today() ? null : day;
       setActiveTab('day');
     });
     th.appendChild(btn);
-    if (core.weekHasUnprocessed(state, day, n)) th.classList.add('week-day-dot');
+    if (core.weekHasUnprocessed(state, day, n)) {
+      btn.classList.add('week-day-dot');
+      const note = document.createElement('span');
+      note.className = 'visually-hidden';
+      note.textContent = t('notYetOvergenomen');
+      btn.appendChild(note);
+    }
     headRow.appendChild(th);
   });
   const thTotal = document.createElement('th');
@@ -714,21 +758,23 @@ function renderWeekSummary(agg) {
   shareEl.textContent =
     share === null
       ? ''
-      : t('weekShareLine')
-          .replace('{billable}', formatHoursForDisplay(agg.billableWeekTotal))
-          .replace('{nonBillable}', formatHoursForDisplay(agg.nonBillableWeekTotal))
-          .replace('{pct}', String(share));
+      : t('weekShareLine', {
+          billable: formatHoursForDisplay(agg.billableWeekTotal),
+          nonBillable: formatHoursForDisplay(agg.nonBillableWeekTotal),
+          pct: share,
+        });
 
   const norm = state.settings.weeklyBillableNorm;
   const normEl = document.getElementById('week-norm');
   normEl.hidden = !(norm > 0);
   if (!(norm > 0)) return;
   const done = agg.billableWeekTotal;
-  const left = Math.max(0, Math.round((norm - done) * 100) / 100);
-  document.getElementById('week-norm-line').textContent = (left > 0 ? t('weekNormLine') : t('weekNormReached'))
-    .replace('{done}', formatHoursForDisplay(done))
-    .replace('{norm}', formatHoursForDisplay(norm))
-    .replace('{left}', formatHoursForDisplay(left));
+  const left = Math.max(0, norm - done);
+  document.getElementById('week-norm-line').textContent = t(left > 0.001 ? 'weekNormLine' : 'weekNormReached', {
+    done: formatHoursForDisplay(done),
+    norm: formatHoursForDisplay(norm),
+    left: formatHoursForDisplay(left),
+  });
   const progress = document.getElementById('week-norm-progress');
   progress.max = norm;
   progress.value = Math.min(done, norm);
@@ -736,7 +782,7 @@ function renderWeekSummary(agg) {
 
 function formatHoursForDisplay(h) {
   if (state.settings.hoursFormat === 'hm') return core.formatHM(h);
-  return core.formatDecimalHours(h, state.settings.language === 'nl' ? ',' : '.');
+  return core.formatDecimalHours(h, decimalSeparator());
 }
 
 document.getElementById('week-prev-btn').addEventListener('click', () => {
@@ -759,11 +805,12 @@ function renderSettings() {
   document.getElementById('settings-round-mode').value = state.settings.roundMode;
   document.getElementById('settings-hours-format').value = state.settings.hoursFormat;
   document.getElementById('settings-delete-weeks').value = state.settings.deleteOlderThanWeeks || '';
-  const normInput = document.getElementById('settings-weekly-norm');
-  if (document.activeElement !== normInput) {
-    const norm = state.settings.weeklyBillableNorm;
-    normInput.value = norm > 0 ? core.formatDecimalHours(norm, state.settings.language === 'nl' ? ',' : '.') : '';
-  }
+  renderWeeklyNorm();
+}
+
+function renderWeeklyNorm() {
+  const norm = state.settings.weeklyBillableNorm;
+  document.getElementById('settings-weekly-norm').value = norm > 0 ? core.formatDecimalHours(norm, decimalSeparator()) : '';
 }
 
 document.getElementById('settings-round-unit').addEventListener('change', (e) => {
@@ -778,12 +825,18 @@ document.getElementById('settings-hours-format').addEventListener('change', (e) 
   state = core.updateSettings(state, { hoursFormat: e.target.value });
   persist();
 });
+// Empty turns the target off; "37,5", "37.5" and "37:30" all work.
+// Anything else keeps the old target.
 document.getElementById('settings-weekly-norm').addEventListener('change', (e) => {
-  const raw = e.target.value.trim().replace(',', '.');
-  const value = raw === '' ? null : Number(raw);
-  state = core.updateSettings(state, { weeklyBillableNorm: value > 0 && Number.isFinite(value) ? value : null });
-  persist();
-  renderSettings();
+  const raw = e.target.value.trim();
+  const ms = raw === '' ? null : core.parseTimeInput(raw);
+  const ok = raw === '' || ms > 0;
+  if (ok) {
+    state = core.updateSettings(state, { weeklyBillableNorm: ms ? ms / 3600000 : null });
+    persist();
+  }
+  document.getElementById('settings-weekly-norm-error').hidden = ok;
+  renderWeeklyNorm();
 });
 document.getElementById('settings-delete-weeks').addEventListener('change', (e) => {
   state = core.updateSettings(state, { deleteOlderThanWeeks: Number(e.target.value) || null });
@@ -793,7 +846,7 @@ document.getElementById('settings-delete-weeks-btn').addEventListener('click', (
   const weeks = state.settings.deleteOlderThanWeeks;
   if (!weeks || weeks < 1) return;
   showConfirm(
-    t('settingsDeleteOldConfirm').replace('{weeks}', String(weeks)),
+    t('settingsDeleteOldConfirm', { weeks }),
     () => {
       state = core.pruneOlderThan(state, weeks, now());
       persist();
@@ -868,11 +921,15 @@ function maybeShowFirstUseNotice() {
   } catch (e) {
     dismissed = false;
   }
-  if (!dismissed) document.getElementById('first-use-notice').hidden = false;
+  if (!dismissed) {
+    document.getElementById('first-use-notice').hidden = false;
+    document.body.classList.add('has-notice');
+  }
 }
 
 document.getElementById('first-use-dismiss').addEventListener('click', () => {
   document.getElementById('first-use-notice').hidden = true;
+  document.body.classList.remove('has-notice');
   try {
     window.localStorage.setItem(NOTICE_KEY, '1');
   } catch (e) {

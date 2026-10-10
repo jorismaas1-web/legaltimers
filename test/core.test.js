@@ -108,7 +108,8 @@ test('manual time edit sets an adjustment so the day total equals the entered va
 test('6-minute round-up table', () => {
   const cases = [
     [0, 0],
-    [1000, 0.1],
+    [1000, 0], // under 30 s is a misclick
+    [30 * 1000, 0.1],
     [6 * 60 * 1000, 0.1],
     [6 * 60 * 1000 + 1000, 0.2],
     [(1 * 3600 + 40 * 60 + 56) * 1000, 1.7],
@@ -217,11 +218,12 @@ test('extractDossierNumber takes the last "/"-separated numeric part, else the f
 
 test('buildDayTSV produces header + rows separated by tabs and newlines', () => {
   const tsv = core.buildDayTSV([
-    { date: '2026-10-07', dossier: '2002100001', hours: '1.7', description: 'memo' },
+    { date: '2026-10-07', project: '2002100001', dossier: 'Client / 2002100001', hours: '1.7', description: 'memo', billable: 'ja' },
   ]);
   const lines = tsv.split('\n');
-  assert.equal(lines[0], 'date\tdossier\thours\tdescription\tbillable');
-  assert.equal(lines[1], '2026-10-07\t2002100001\t1.7\tmemo\t');
+  assert.equal(lines[0], 'date\tproject\tdossier\thours\tdescription\tbillable');
+  assert.equal(lines[1], '2026-10-07\t2002100001\tClient / 2002100001\t1.7\tmemo\tja');
+  assert.equal(core.buildDayTSV([], { date: 'datum', hours: 'uren' }).split('\t')[0], 'datum');
 });
 
 // ---- long-run detection ----
@@ -307,7 +309,7 @@ test('starting a clock again clears its Gereed mark for today', () => {
 
 test('buildDayTSV replaces tabs and newlines inside fields with spaces', () => {
   const tsv = core.buildDayTSV([{ date: '2026-10-07', dossier: 'A\tB', hours: '0,2', description: 'line1\nline2' }]);
-  assert.equal(tsv.split('\n')[1], '2026-10-07\tA B\t0,2\tline1 line2\t');
+  assert.equal(tsv.split('\n')[1], '2026-10-07\t\tA B\t0,2\tline1 line2\t');
 });
 
 test('isReady reports the Gereed mark for a clock on a day', () => {
@@ -353,7 +355,8 @@ test('switching a timer to non-billable keeps earlier days as they were and make
   assert.equal(core.isBillable(state, clockId, '2026-10-06'), false);
   assert.equal(core.isBillable(state, clockId, '2026-10-07'), false);
   assert.equal(core.isBillable(state, clockId, '2026-10-08'), false);
-  assert.equal(core.clockBillableDefault(state, clockId), false);
+  assert.equal(core.clockBillableDefault(state, clockId, '2026-10-07'), false);
+  assert.equal(core.clockBillableDefault(state, clockId, '2026-10-06'), true);
 });
 
 test('day summary rows carry the billable flag', () => {
@@ -380,7 +383,8 @@ test('daySplit sums rounded hours per row into billable and non-billable', () =>
   state = core.pauseRunning(state, t0 + 68 * 60000);
   state = core.setDayBillable(state, b, '2026-10-07', false);
 
-  const split = core.daySplit(state, '2026-10-07', localMs(2026, 10, 7, 12, 0, 0), { roundUnitMinutes: 6, roundMode: 'up' });
+  const rows = core.getDaySummaryRows(state, '2026-10-07', localMs(2026, 10, 7, 12, 0, 0));
+  const split = core.daySplit(rows, { roundUnitMinutes: 6, roundMode: 'up' });
   assert.deepEqual(split, { total: 1.3, billable: 0.2, nonBillable: 1.1 });
 });
 
@@ -452,4 +456,94 @@ test('descriptionSuggestions lists earlier descriptions for the same dossier, mo
 
 test('the weekly billable norm is off by default', () => {
   assert.equal(core.createInitialState().settings.weeklyBillableNorm, null);
+});
+
+test('switching a card keeps every earlier day of a clock that ran over several midnights', () => {
+  const fri = localMs(2026, 10, 9, 20, 0, 0);
+  let { state, clockId } = core.addClock(core.createInitialState(), { dossier: 'A' }, fri);
+  state = core.startClock(state, clockId, fri);
+  state = core.setClockBillable(state, clockId, false, localMs(2026, 10, 12, 9, 0, 0));
+  for (const day of ['2026-10-09', '2026-10-10', '2026-10-11']) assert.equal(core.isBillable(state, clockId, day), true, day);
+  assert.equal(core.isBillable(state, clockId, '2026-10-12'), false);
+});
+
+test('switching a card twice on one day keeps one change for that day', () => {
+  const t0 = localMs(2026, 10, 7, 9, 0, 0);
+  let { state, clockId } = core.addClock(core.createInitialState(), { dossier: 'A' }, t0);
+  state = core.setClockBillable(state, clockId, false, t0);
+  state = core.setClockBillable(state, clockId, true, t0 + 60000);
+  assert.deepEqual(state.clocks[0].billableChanges, [['2026-10-07', true]]);
+});
+
+test('elapsedByClock matches elapsedForDay for every clock, including a running clock and adjustments', () => {
+  const t0 = localMs(2026, 10, 6, 22, 0, 0);
+  let state = core.createInitialState();
+  let res = core.addClock(state, { dossier: 'A' }, t0);
+  state = res.state;
+  const a = res.clockId;
+  res = core.addClock(state, { dossier: 'B' }, t0);
+  state = res.state;
+  const b = res.clockId;
+  state = core.startClock(state, a, t0);
+  state = core.startClock(state, b, localMs(2026, 10, 7, 1, 0, 0));
+  const now = localMs(2026, 10, 7, 3, 30, 0);
+  state = core.setManualElapsed(state, a, '2026-10-07', 2 * 3600000, now);
+  for (const day of ['2026-10-06', '2026-10-07']) {
+    const map = core.elapsedByClock(state, day, now);
+    for (const id of [a, b]) assert.equal(map.get(id) || 0, core.elapsedForDay(state, id, day, now), `${id} ${day}`);
+  }
+});
+
+test('totals are summed in whole minutes so h:mm totals do not drift', () => {
+  const t0 = localMs(2026, 10, 7, 9, 0, 0);
+  let state = core.createInitialState();
+  const rows = [];
+  for (let i = 0; i < 12; i++) rows.push({ elapsedMs: 5 * 60000, billable: true });
+  const split = core.daySplit(rows, { roundUnitMinutes: 5, roundMode: 'up' });
+  assert.equal(core.formatHM(split.total), '1:00');
+
+  for (let i = 0; i < 6; i++) {
+    const res = core.addClock(state, { dossier: `D${i}` }, t0);
+    state = res.state;
+    state = core.setManualElapsed(state, res.clockId, '2026-10-07', 10 * 60000, t0);
+  }
+  const agg = core.aggregateWeek(state, core.getWeekStart(t0), t0, { roundUnitMinutes: 10, roundMode: 'up' });
+  assert.equal(core.formatHM(agg.weekTotal), '1:00');
+  assert.equal(core.formatHM(agg.dayTotals[2]), '1:00');
+});
+
+test('descriptions stay with the dossier they were written for after a card is renamed', () => {
+  const t0 = localMs(2026, 10, 5, 9, 0, 0);
+  let { state, clockId } = core.addClock(core.createInitialState(), { dossier: 'Client A / 1001' }, t0);
+  state = core.setDescription(state, clockId, '2026-10-05', 'Review merger memo');
+  state = core.updateClock(state, clockId, { dossier: 'Client B / 2002' });
+  assert.deepEqual(core.descriptionSuggestions(state, 'Client B / 2002'), []);
+  assert.deepEqual(core.descriptionSuggestions(state, 'Client A / 1001'), ['Review merger memo']);
+});
+
+test('time under 30 seconds (a misclick) is not booked', () => {
+  const t0 = localMs(2026, 10, 7, 9, 0, 0);
+  let { state, clockId } = core.addClock(core.createInitialState(), { dossier: 'A' }, t0);
+  state = core.startClock(state, clockId, t0);
+  state = core.pauseRunning(state, t0 + 800);
+  assert.equal(core.roundHoursMs(800, 6, 'up'), 0);
+  assert.deepEqual(core.getDaySummaryRows(state, '2026-10-07', t0 + 5000), []);
+  assert.equal(core.weekHasUnprocessed(state, '2026-10-07', t0 + 5000), false);
+  assert.equal(core.roundHoursMs(31 * 1000, 6, 'up'), 0.1);
+});
+
+test('a new card for a dossier set to non-billable earlier takes over that setting', () => {
+  const t0 = localMs(2026, 10, 5, 9, 0, 0);
+  let res = core.addClock(core.createInitialState(), { dossier: 'Kantoor / Kennissessie' }, t0);
+  let state = core.setClockBillable(res.state, res.clockId, false, t0);
+  state = core.removeClock(state, res.clockId, t0);
+
+  const t1 = localMs(2026, 10, 12, 9, 0, 0);
+  res = core.addClock(state, { dossier: '' }, t1);
+  state = core.updateClock(res.state, res.clockId, { dossier: 'Kantoor / Kennissessie ' });
+  state = core.adoptBillableFromDossier(state, res.clockId, t1);
+  assert.equal(core.isBillable(state, res.clockId, '2026-10-12'), false);
+
+  res = core.addClock(state, { dossier: 'Client / 1' }, t1);
+  assert.equal(core.adoptBillableFromDossier(res.state, res.clockId, t1), res.state);
 });

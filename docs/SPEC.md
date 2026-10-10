@@ -66,32 +66,40 @@ Legal Sense "Timers" (chessclocks) page. Agreed in a grilling session on 2026-10
   stored per day per clock), "overgenomen" checkbox.
 - Rounding: default 6-minute units, rounded up (7 min -> 0.2 h). Setting:
   unit 1/5/6/10/15 min, mode up/nearest. Display format setting: decimal (1.7)
-  or h:mm (1:42). 0 seconds rounds to 0.
+  or h:mm (1:42). Less than 30 seconds on a day (a misclick) rounds to 0 and
+  the row is not shown. Totals are summed in whole minutes, so h:mm totals
+  never drift.
 - Copy buttons per row, in AFAS field order (Project, Aantal, Toelichting;
   werksoort is not copied; there is no activity field at all): dossier number (the last "/"-separated part if it
   is numeric, else full dossier line), hours (rounded, in chosen format;
   decimal comma when the UI is NL), description.
 - Clicking the row (outside inputs/buttons) toggles "overgenomen".
 - Copy buttons briefly show ✓ (or ✗ if the browser refused).
-- "Kopieer dag als tabel": TSV with header: date, dossier, hours,
-  description, billable. Tabs/newlines inside fields become spaces.
+- "Kopieer dag als tabel": TSV with header: date, project, dossier, hours,
+  description, billable (labels in the UI language). Tabs/newlines inside fields become spaces.
 - Total today shown at the top of the page.
 
 ## Billable / non-billable
 
 - Time is billable by default. The card toggle sets the clock's default from
-  today on: earlier days that followed the old default get it written down
-  (so history never changes), today follows the new default. The card shows
-  today's value.
+  today on, stored as a list of changes per clock (`billableChanges:
+  [[day, bool]]`), so earlier days never change; today drops any per-day
+  choice and follows the card. The card shows today's value, with
+  "(vandaag)" when today differs from the card default.
+- A card that gets the dossier of an earlier non-billable card takes over
+  that setting (e.g. an internal dossier recreated next week).
 - The day summary has a toggle per row that changes only that day.
 - Totals use rounded hours (each row rounded, then summed), as booked.
-- Header: today's billable and non-billable hours next to the total.
+- Header: next to the exact total, the rounded total split into billable and
+  non-billable ("afgerond 2,6: 1,2 declarabel, 1,4 niet declarabel").
 - Day summary: footer row with total, billable, non-billable and % billable.
-- Week view: non-billable cells in italic; footer rows total / billable /
+- Week view: non-billable cells shaded and italic; day headers show the date
+  ("Ma 5/10") and the whole header cell opens the day; footer rows total / billable /
   non-billable; a line with the week split and % billable.
 - Settings: weekly billable target in hours (empty = off). When set, the
   week view shows progress ("x of y, z to go") with a progress bar.
-- "Kopieer dag als tabel" adds a billable column (ja/nee, yes/no).
+- "Kopieer dag als tabel" adds project number and billable (ja/nee) columns,
+  with headers in the UI language.
 
 ## Week view
 
