@@ -256,6 +256,22 @@ test('removeClock archives the card but keeps past hours for day and week views'
   assert.equal(core.elapsedForDay(state, id, core.dayKey(thu), thu + 3600000), 1800000);
 });
 
+test('removeAllClocks archives every card, pauses the running one and keeps logged hours', () => {
+  let state = core.createInitialState();
+  const t0 = localMs(2026, 10, 5, 9, 0, 0);
+  const a = core.addClock(state, { dossier: 'A / 1' }, t0);
+  const b = core.addClock(a.state, { dossier: 'B / 2' }, t0);
+  state = core.startClock(b.state, a.clockId, t0);
+  state = core.startClock(state, b.clockId, t0 + 3600000);
+
+  state = core.removeAllClocks(state, t0 + 5400000);
+
+  assert.equal(state.running, null);
+  assert.deepEqual(core.activeClocks(state), []);
+  assert.equal(core.elapsedForDay(state, a.clockId, core.dayKey(t0), t0 + 7200000), 3600000);
+  assert.equal(core.elapsedForDay(state, b.clockId, core.dayKey(t0), t0 + 7200000), 1800000);
+});
+
 test('pruneOlderThan drops archived clocks that have no history left', () => {
   let state = core.createInitialState();
   const old = localMs(2026, 1, 5, 9, 0, 0);

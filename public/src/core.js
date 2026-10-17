@@ -133,6 +133,13 @@ export function removeClock(state, clockId, now) {
   return next;
 }
 
+// Archives every active clock at once (same rules as removeClock).
+export function removeAllClocks(state, now) {
+  const next = pauseRunning(state, now);
+  next.clocks = next.clocks.map((c) => (c.archived ? c : { ...c, archived: true }));
+  return next;
+}
+
 export function activeClocks(state) {
   return state.clocks.filter((c) => !c.archived);
 }

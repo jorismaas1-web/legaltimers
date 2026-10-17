@@ -261,6 +261,9 @@ function renderCards() {
     }
   }
 
+  // One card has its own ✕, so the bulk button only shows from two cards on.
+  document.getElementById('delete-all-btn').hidden = seen.size < 2;
+
   if (focusNewDossierFor) {
     const entry = cardEls.get(focusNewDossierFor);
     if (entry) entry.dossierInput.focus();
@@ -314,6 +317,15 @@ document.getElementById('pause-all-btn').addEventListener('click', () => {
   state = core.pauseAll(state, now());
   persist();
   renderCards();
+});
+
+document.getElementById('delete-all-btn').addEventListener('click', () => {
+  const count = core.activeClocks(state).length;
+  showConfirm(t('confirmDeleteAllTimers', { count }), () => {
+    state = core.removeAllClocks(state, now());
+    persist();
+    renderCards();
+  });
 });
 
 // ---------- long-run banner ----------

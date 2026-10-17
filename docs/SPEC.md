@@ -32,6 +32,9 @@ Legal Sense "Timers" (chessclocks) page. Agreed in a grilling session on 2026-10
 - Chess-clock rule: at most one clock runs. Starting one immediately pauses the
   running one. No confirmation.
 - "Pause all" button for breaks.
+- "Delete all timers" button (shown from two cards on), with a confirm dialog
+  naming the count. Same rule as ✕: the cards go, logged time stays in Day
+  and Week; a running clock is paused first.
 - "New timer" adds an empty card at the end, dossier field focused.
 - Multiple tabs: a tab picks up the state another tab saved (storage event), so
   two open tabs never overwrite each other.

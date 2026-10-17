@@ -223,8 +223,13 @@ main {
   gap: 0.5em;
 }
 
+.toolbar-delete-all {
+  margin-left: auto;
+}
+
 .card-delete,
-.row-delete {
+.row-delete,
+.toolbar-delete-all {
   color: var(--danger);
 }
 
