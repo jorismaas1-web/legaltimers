@@ -244,12 +244,10 @@ function renderCards() {
     entry.node.classList.toggle('is-running', running);
     entry.node.classList.toggle('is-ready', ready);
     entry.node.classList.toggle('is-nonbillable', !billable);
-    entry.startPauseBtn.textContent = running ? t('pause') : t('start');
-    entry.readyBtn.textContent = ready ? `${t('ready')} ✓` : t('ready');
-    setBillableToggle(entry.billableBtn, billable, t('cardBillableTitle'));
-    if (billable !== core.clockBillableDefault(state, clock.id, day)) {
-      entry.billableBtn.textContent += ` (${t('todayOnly')})`;
-    }
+    setText(entry.startPauseBtn, running ? t('pause') : t('start'));
+    setText(entry.readyBtn, ready ? `${t('ready')} ✓` : t('ready'));
+    const todayOnly = billable !== core.clockBillableDefault(state, clock.id, day);
+    setBillableToggle(entry.billableBtn, billable, t('cardBillableTitle'), todayOnly ? ` (${t('todayOnly')})` : '');
     entry.deleteBtn.setAttribute('aria-label', t('deleteTimer'));
     entry.deleteBtn.title = t('deleteTimer');
   }
@@ -288,8 +286,37 @@ function fillSuggestions(list, dossier) {
   }
 }
 
-function setBillableToggle(btn, billable, title) {
-  btn.textContent = billable ? t('billable') : t('nonBillable');
+// Only touch the text when it changes. A dossier `change` (fired by the
+// mousedown that blurs the input) re-renders the cards; replacing a button's
+// text node between mousedown and mouseup makes Safari/WebKit drop the click.
+function setText(el, text) {
+  if (el.textContent !== text) el.textContent = text;
+}
+
+// Same cause, bigger effect: rebuilding a table on that `change` removes the
+// element under the pointer, and the click (on a checkbox or copy button in
+// another row) is lost in every browser. While a pointer is down, run the
+// re-render only after the click has landed.
+let pointerIsDown = false;
+const POINTER_END = ['pointerup', 'pointercancel'];
+document.addEventListener('pointerdown', () => { pointerIsDown = true; }, true);
+for (const type of POINTER_END) {
+  document.addEventListener(type, () => { setTimeout(() => { pointerIsDown = false; }, 0); }, true);
+}
+function afterPointer(fn) {
+  if (!pointerIsDown) {
+    fn();
+    return;
+  }
+  const run = () => {
+    for (const type of POINTER_END) document.removeEventListener(type, run, true);
+    setTimeout(fn, 0);
+  };
+  for (const type of POINTER_END) document.addEventListener(type, run, true);
+}
+
+function setBillableToggle(btn, billable, title, suffix = '') {
+  setText(btn, (billable ? t('billable') : t('nonBillable')) + suffix);
   btn.classList.toggle('is-nonbillable', !billable);
   btn.setAttribute('aria-pressed', String(billable));
   btn.title = title;
@@ -518,8 +545,10 @@ function renderDay() {
       }
       state = core.setManualElapsed(state, row.clockId, day, ms, now());
       persist();
-      renderDay();
-      tick();
+      afterPointer(() => {
+        renderDay();
+        tick();
+      });
     });
     tdExact.appendChild(exactInput);
 

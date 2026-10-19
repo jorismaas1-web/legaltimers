@@ -372,18 +372,6 @@ tbody tr:hover {
   margin-top: 1em;
 }
 
-.beta-badge {
-  font-size: 0.6em;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  color: var(--accent);
-  border: 1px solid var(--accent);
-  border-radius: 4px;
-  padding: 0.1em 0.4em;
-  vertical-align: middle;
-}
-
 .storage-warning {
   background: var(--banner-bg);
   border: 1px solid var(--danger);

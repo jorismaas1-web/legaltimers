@@ -1,4 +1,4 @@
-# Legal Timers: betatest
+# Legal Timers: handleiding
 
 Legal Timers is een schaakklok voor je uren. Je zet per dossier een timer
 neer, en wie een timer start, pauzeert vanzelf de timer die liep. Aan het
@@ -55,24 +55,16 @@ Liep een timer langer dan 3 uur of over middernacht door, dan vraagt de
 pagina of dat klopt. Met **Corrigeer eindtijd** vul je in hoe laat je echt
 stopte.
 
-## Wat we willen weten
-
-- Klopt de afronding met hoe jij schrijft?
-- Gaat het kopiëren naar je urenregistratie soepel, of mis je iets?
-- Liep er ooit een timer door terwijl je dacht dat hij stond, of andersom?
-- Ben je ooit tijd kwijtgeraakt? Zo ja: wat deed je net daarvoor?
-- Wat mis je het meest?
-
 ## Bekende beperkingen
 
 - Geen synchronisatie tussen computers of browsers, bewust.
 - Een timer hernoemen verandert de naam ook op eerdere dagen.
-- Getest in Chrome. Edge, Firefox en Safari zouden ook moeten werken; meld het
-  als iets daar anders doet.
+- Getest in Chromium (Chrome, Edge), Firefox en WebKit (Safari). Doet iets
+  het in jouw browser anders, meld het dan.
 
 ## Feedback
 
-Stuur je bevindingen aan degene die je de link gaf, of maak een issue aan op
+Een fout gevonden of een idee? Maak een issue aan op
 https://github.com/jorismaas1-web/legaltimers/issues (dat is openbaar). Een
 screenshot en de stappen die je deed helpen het meest. Gebruik verzonnen
 dossiers in screenshots: nooit echte cliëntnamen, dossiernummers of

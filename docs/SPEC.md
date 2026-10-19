@@ -146,7 +146,7 @@ product spec the code is built against; keep it in sync when behaviour changes.
   Ctrl/Cmd/Alt held, or while a dialog is open): 1-9 start/switch clock
   at that position, Space pause all, N new timer. Listed in a small help line.
 - System font, calm neutral styling, light/dark via prefers-color-scheme.
-- A small "beta" badge next to the title during the beta.
+- No badge next to the title.
 - Line on the page: "Alles blijft in je browser. Deze site verstuurt niets." plus
   a short "how to check" note (DevTools Network tab).
 - Views: Timers (default) / Dag / Week / Instellingen, as tabs on one page.

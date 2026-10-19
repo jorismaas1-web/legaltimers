@@ -99,7 +99,7 @@ Outside `public/` (not served):
 
 - `test/*.test.js`: tests, run with the Node built-in test runner.
 - `docs/SPEC.md`: the full product spec.
-- `docs/BETA.md`: the (Dutch) guide for beta testers.
+- `docs/GUIDE.md`: a short user guide (Dutch).
 
 ## Contributing
 
