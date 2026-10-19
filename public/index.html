@@ -31,7 +31,7 @@
   <button type="button" id="lang-toggle" class="lang-toggle" aria-label="Taal / Language">NL</button>
 </header>
 
-<nav class="tabs" id="tabs" role="tablist" aria-label="Views">
+<nav class="tabs" id="tabs" role="tablist" aria-label="Weergaves">
   <button type="button" class="tab-btn is-active" id="tab-timers" role="tab" aria-selected="true" aria-controls="view-timers" data-tab="timers" data-i18n="tabTimers">Timers</button>
   <button type="button" class="tab-btn" id="tab-day" role="tab" aria-selected="false" tabindex="-1" aria-controls="view-day" data-tab="day" data-i18n="tabDay">Dag</button>
   <button type="button" class="tab-btn" id="tab-week" role="tab" aria-selected="false" tabindex="-1" aria-controls="view-week" data-tab="week" data-i18n="tabWeek">Week</button>
@@ -39,6 +39,7 @@
 </nav>
 
 <main>
+<div class="banner-stack">
 <p id="storage-blocked" class="storage-warning" role="alert" data-i18n="storageBlocked" hidden>Je laatste wijziging is nog niet opgeslagen: de kopie van je onleesbare gegevens kon niet worden bewaard. Download de kopie, of ga door zonder kopie, dan wordt opslaan weer hervat.</p>
 <p id="storage-warning" class="storage-warning" data-i18n="storageWarning" hidden>Je browser staat niet toe dat deze pagina gegevens bewaart. Je tijden worden niet opgeslagen.</p>
 
@@ -48,6 +49,7 @@
   <button type="button" id="unreadable-continue-btn" data-i18n="storageUnreadableContinue">Doorgaan zonder kopie</button>
 </div>
 <p id="sync-notice" class="storage-warning" role="status" data-i18n="syncConflict" hidden>Een ander tabblad heeft je tijden net gewijzigd. Je laatste actie is niet opgeslagen; doe hem opnieuw.</p>
+</div>
 
 <section id="view-timers" class="view is-active" role="tabpanel" aria-labelledby="tab-timers">
   <div class="toolbar">
@@ -202,7 +204,7 @@
 </div>
 
 <div id="confirm-dialog" class="confirm-dialog" hidden>
-  <div class="confirm-box" role="dialog" aria-modal="true" aria-labelledby="confirm-message" aria-describedby="confirm-message">
+  <div class="confirm-box" role="dialog" aria-modal="true" aria-labelledby="confirm-message">
     <p id="confirm-message"></p>
     <div class="confirm-actions">
       <button type="button" id="confirm-ok" data-i18n="delete">Verwijderen</button>

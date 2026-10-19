@@ -5,6 +5,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { chromium, firefox, webkit } from 'playwright';
 import { start } from './server.mjs';
+import { parseCsp, headerPolicy, policyProblems, metaMismatch } from './csp.mjs';
 
 const PUBLIC = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', 'public');
 const ENGINES = { chromium, firefox, webkit };
@@ -189,6 +190,90 @@ for (const name of wanted) {
       assert.ok(has('img-src'), `violations: ${result.violations}`);
       // None of the attempts reached the server.
       assert.deepEqual(srv.requests, []);
+      await context.close();
+    });
+
+    test('CSP: the served header matches _headers exactly and the <meta> copy matches the header', async () => {
+      const context = await browser.newContext({ locale: 'nl-NL' });
+      const page = await context.newPage();
+      const response = await page.goto(srv.base + '/');
+      const served = await response.headerValue('content-security-policy');
+      assert.ok(served, 'the page must be served with a Content-Security-Policy header');
+      const fromFile = headerPolicy();
+      assert.deepEqual(parseCsp(served), parseCsp(fromFile));
+      assert.deepEqual(policyProblems(served, { header: true }), []);
+      assert.deepEqual(parseCsp(served)['frame-ancestors'], ["'none'"]);
+      const meta = await page.locator('meta[http-equiv="Content-Security-Policy"]').getAttribute('content');
+      assert.deepEqual(policyProblems(meta, { header: false }), []);
+      assert.deepEqual(metaMismatch(served, meta), []);
+      await context.close();
+    });
+
+    test('regression: Space pauses all after clicking Start and Pause, but keeps its meaning on a keyboard-focused button', async () => {
+      const { context, page } = await open();
+      const c1 = await addTimer(page, 'Alpha 1', '1:00');
+      const c2 = await addTimer(page, 'Beta 2', '0:30');
+      const running = (c) => c.evaluate((n) => n.classList.contains('is-running'));
+      await c1.locator('.card-startpause').click();
+      await c1.locator('.card-startpause').click(); // focus stays on the clicked button
+      await page.keyboard.press('2');
+      assert.equal(await running(c2), true);
+      await page.keyboard.press(' ');
+      await page.waitForTimeout(150);
+      assert.equal(await running(c1), false, 'Space must not re-activate the last clicked button');
+      assert.equal(await running(c2), false, 'Space must pause everything');
+      // Reached with the keyboard, Space presses the button as usual.
+      // (Safari skips buttons when tabbing, so this half runs elsewhere only.)
+      if (name !== 'webkit') {
+        await c1.locator('.card-dossier').focus();
+        for (let i = 0; i < 8 && !(await page.evaluate(() => document.activeElement.classList.contains('card-startpause'))); i++) {
+          await page.keyboard.press('Tab');
+        }
+        await page.keyboard.press(' ');
+        await page.waitForTimeout(150);
+        assert.equal(await running(c1), true, 'Space on a keyboard-focused Start button starts it');
+      }
+      await context.close();
+    });
+
+    test('regression: N does not type into the new dossier field', async () => {
+      const { context, page } = await open();
+      await page.locator('body').click({ position: { x: 5, y: 5 } });
+      await page.keyboard.press('n');
+      await page.waitForSelector('.card');
+      assert.equal(await page.locator('.card-dossier').first().inputValue(), '');
+      await context.close();
+    });
+
+    test('regression: a long press after an edit still lands its click', async () => {
+      const { context, page } = await open();
+      await dayWithRows(page, 2);
+      await page.locator('#day-table-body tr').nth(0).locator('.day-exact').click();
+      await page.keyboard.press('ControlOrMeta+A');
+      await page.keyboard.type('2:00');
+      const box = page.locator('#day-table-body tr').nth(1).locator('input[type=checkbox]');
+      const bb = await box.boundingBox();
+      await page.mouse.move(bb.x + bb.width / 2, bb.y + bb.height / 2);
+      await page.mouse.down();
+      await page.waitForTimeout(1400); // longer than the 1 s safety timer
+      await page.mouse.up();
+      await page.waitForTimeout(300);
+      assert.equal(await page.locator('#day-table-body tr').nth(1).locator('input[type=checkbox]').isChecked(), true);
+      assert.match(await page.locator('#day-table-body .day-exact').first().inputValue(), /2:00/);
+      await context.close();
+    });
+
+    test('banners overlay the page: showing one moves nothing', async () => {
+      const { context, page } = await open();
+      const before = await page.locator('#new-timer-btn').boundingBox();
+      await page.evaluate(() => {
+        for (const id of ['storage-warning', 'sync-notice', 'storage-unreadable']) document.getElementById(id).hidden = false;
+      });
+      const after = await page.locator('#new-timer-btn').boundingBox();
+      assert.deepEqual(after, before);
+      for (const id of ['storage-warning', 'sync-notice', 'storage-unreadable']) {
+        assert.equal(await page.locator('#' + id).evaluate((el) => getComputedStyle(el.closest('.banner-stack')).position), 'fixed');
+      }
       await context.close();
     });
 

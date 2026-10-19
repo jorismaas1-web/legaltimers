@@ -24,7 +24,8 @@ computer, dan zie je je tijden niet. Maak af en toe een backup
    meteen de omschrijving typen; eerdere omschrijvingen bij hetzelfde
    dossier komen terug als suggestie.
 2. **Start**. Start je een andere timer, dan pauzeert de eerste. Met
-   **Alles pauzeren** (of spatie) zet je alles stil voor een pauze.
+   **Alles pauzeren** (of spatie, zie Sneltoetsen hieronder) zet je alles stil
+   voor een pauze.
 3. Tijd vergeten te starten? Klik in de tijd en typ wat het moet zijn:
    `1:30`, `1:30:00` of `1,5`.
 4. **Gereed** zet een timer stil en markeert de tijd van vandaag als klaar.
@@ -49,7 +50,11 @@ computer, dan zie je je tijden niet. Maak af en toe een backup
    hier hoe ver je bent.
 
 Sneltoetsen op het Timers-tabblad: `1` t/m `9` start of wisselt naar die
-timer, spatie pauzeert alles, `N` maakt een nieuwe timer.
+timer, spatie pauzeert alles, `N` maakt een nieuwe timer. Spatie drukt
+alleen op een knop als je er met het toetsenbord (Tab) naartoe bent gegaan;
+heb je er net op geklikt, dan pauzeert spatie nog steeds alles. Een toets
+ingedrukt houden herhaalt de actie niet, en `N` typt geen n in het
+dossierveld.
 
 Liep een timer langer dan 3 uur of over middernacht door, dan vraagt de
 pagina of dat klopt. Kies je **Klopt, laten staan**, dan vraagt de pagina het na 3 uur of op een nieuwe dag opnieuw. Met **Corrigeer eindtijd** vul je in hoe laat je echt

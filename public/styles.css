@@ -378,13 +378,48 @@ tbody tr:hover {
   margin-top: 1em;
 }
 
+/* The banners overlay the page at the bottom instead of sitting in the flow:
+   one appearing or disappearing between a mousedown and its mouseup must not
+   move the controls and lose the click. The stack itself ignores the pointer,
+   only the banners take it. */
+.banner-stack {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5em;
+  align-items: center;
+  padding: 0 0.75rem 0.75rem;
+  max-height: 45vh;
+  overflow-y: auto;
+  pointer-events: none;
+}
+
 .storage-warning {
+  pointer-events: auto;
+  width: 100%;
+  max-width: 40rem;
   background: var(--banner-bg);
   border: 1px solid var(--danger);
   color: var(--danger);
   border-radius: 8px;
   padding: 0.7em 1em;
-  margin: 0 0 1em;
+  margin: 0;
+  font-size: 0.9em;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
+}
+
+.storage-warning p {
+  margin: 0 0 0.5em;
+}
+
+/* Room at the end of the page so the last controls can scroll above a banner
+   (padding at the bottom only: nothing above it moves). */
+body:has(.banner-stack > :not([hidden])) {
+  padding-bottom: 12rem;
 }
 
 .card.is-ready .card-ready {

@@ -250,3 +250,25 @@ test('pruneOlderThan moves the start of an old run to the cutoff', () => {
   const paused = core.pauseRunning(pruned, now);
   assert.ok(paused.segments.every((s) => s.start >= cutoff));
 });
+
+test('resolveDayRowOwner follows a day row that a rename moved to an archived clock', () => {
+  const t0 = localMs(2026, 10, 7, 9, 0);
+  let { state, clockId } = clockWithTime('Alpha 1', t0, 45);
+  const now = localMs(2026, 10, 8, 9, 0);
+  // Row still owned by the clock: unchanged.
+  assert.equal(core.resolveDayRowOwner(state, clockId, '2026-10-07', 'Alpha 1', now), clockId);
+  state = core.renameClock(state, clockId, 'Alpha 2', now);
+  const archived = state.clocks.find((c) => c.archived);
+  // The remembered id lost its row for that day; the archived clock holds it.
+  assert.equal(core.resolveDayRowOwner(state, clockId, '2026-10-07', 'Alpha 1', now), archived.id);
+  // No matching row: keep the remembered id.
+  assert.equal(core.resolveDayRowOwner(state, clockId, '2026-10-07', 'Other', now), clockId);
+  // Two rows with the same dossier: ambiguous, keep the remembered id.
+  const twin = clockWithTime('Alpha 1', t0, 30);
+  const both = {
+    ...state,
+    clocks: [...state.clocks, { ...twin.state.clocks[0], id: 'c99' }],
+    segments: [...state.segments, ...twin.state.segments.map((s) => ({ ...s, clockId: 'c99' }))],
+  };
+  assert.equal(core.resolveDayRowOwner(both, clockId, '2026-10-07', 'Alpha 1', now), clockId);
+});

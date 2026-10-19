@@ -611,6 +611,19 @@ export function getDaySummaryRows(state, day, now) {
   return rows;
 }
 
+// A Day row remembers the clock id it was drawn for, but another tab can move
+// that day's time to a different (archived) clock in the meantime, e.g. by
+// renaming the card. Returns the clock that owns the row for `day` now: the
+// remembered one while it still has a row, else the only clock whose row for
+// that day shows `dossier`, else the remembered one.
+export function resolveDayRowOwner(state, clockId, day, dossier, now) {
+  const rows = getDaySummaryRows(state, day, now);
+  if (rows.some((r) => r.clockId === clockId)) return clockId;
+  const wanted = (dossier || '').trim();
+  const same = rows.filter((r) => (r.dossier || '').trim() === wanted);
+  return same.length === 1 ? same[0].clockId : clockId;
+}
+
 // ---------- long-run detection ----------
 
 export function isLongRun(startedAt, now, thresholdMs = 3 * 3600 * 1000) {

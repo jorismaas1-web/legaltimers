@@ -105,6 +105,7 @@ function applyI18n() {
   for (const el of document.querySelectorAll('[data-i18n]')) {
     el.textContent = t(el.getAttribute('data-i18n'));
   }
+  document.getElementById('tabs').setAttribute('aria-label', t('tabsLabel'));
   document.getElementById('lang-toggle').textContent = state.settings.language.toUpperCase();
 }
 
@@ -152,10 +153,15 @@ document.getElementById('tabs').addEventListener('keydown', (e) => {
 
 // ---------- confirm dialog ----------
 
+function isConfirmOpen() {
+  return !document.getElementById('confirm-dialog').hidden;
+}
+
 function showConfirm(message, onConfirm, okLabel = t('delete')) {
   const dialog = document.getElementById('confirm-dialog');
   document.getElementById('confirm-message').textContent = message;
   const opener = document.activeElement;
+  const openerInDay = captureDayFocus(); // to find the same control if its row gets rebuilt
   dialog.hidden = false;
   const ok = document.getElementById('confirm-ok');
   const cancel = document.getElementById('confirm-cancel');
@@ -168,7 +174,21 @@ function showConfirm(message, onConfirm, okLabel = t('delete')) {
     ok.removeEventListener('click', onOk);
     cancel.removeEventListener('click', onCancel);
     document.removeEventListener('keydown', onKey, true);
-    if (opener && opener.isConnected && typeof opener.focus === 'function') opener.focus();
+    if (opener && opener.isConnected && typeof opener.focus === 'function') {
+      opener.focus();
+    } else {
+      // The opener was rebuilt or removed meanwhile: same control in the new
+      // row, else the active tab, never a hidden element.
+      restoreDayFocus(openerInDay);
+      const a = document.activeElement;
+      if (!a || a === document.body || !a.isConnected) {
+        const tab = document.querySelector('.tab-btn.is-active');
+        if (tab) tab.focus();
+      }
+    }
+    // A Day rebuild held back while the dialog was open runs now, unless the
+    // restored focus is in the rows (then it waits for focus to leave them).
+    if (dayRenderPending && !document.getElementById('day-table-body').contains(document.activeElement)) renderDay();
   }
   function onOk() {
     cleanup();
@@ -353,10 +373,13 @@ function renderCards() {
     entry.node.classList.toggle('is-ready', ready);
     entry.node.classList.toggle('is-nonbillable', !billable);
     setText(entry.startPauseBtn, running ? t('pause') : t('start'));
+    entry.startPauseBtn.setAttribute('aria-label', t(running ? 'cardPauseLabel' : 'cardStartLabel', { dossier: dossierName }));
     setText(entry.readyBtn, ready ? `${t('ready')} ✓` : t('ready'));
+    entry.readyBtn.setAttribute('aria-label', t('cardReadyLabel', { dossier: dossierName }));
     const todayOnly = billable !== core.clockBillableDefault(state, clock.id, day);
     setBillableToggle(entry.billableBtn, billable, t('cardBillableTitle'), todayOnly ? ` (${t('todayOnly')})` : '');
-    entry.deleteBtn.setAttribute('aria-label', t('deleteTimer'));
+    entry.billableBtn.setAttribute('aria-label', t('cardBillableLabel', { dossier: dossierName }));
+    entry.deleteBtn.setAttribute('aria-label', t('cardDeleteLabel', { dossier: dossierName }));
     entry.deleteBtn.title = t('deleteTimer');
   }
 
@@ -406,15 +429,25 @@ function setText(el, text) {
 // another row) is lost in every browser. While a pointer is down, run the
 // re-render only after the click has landed.
 let pointerIsDown = false;
+let pointerGen = 0; // bumped on every pointerdown; a release only ends its own press
 const pointerWaiters = new Set();
 const POINTER_END = ['pointerup', 'pointercancel'];
+function flushPointerWaiters() {
+  for (const w of [...pointerWaiters]) w.run();
+}
 function releasePointer() {
+  const gen = pointerGen;
   setTimeout(() => {
+    // A newer pointerdown already started: this release is stale.
+    if (gen !== pointerGen) return;
     pointerIsDown = false;
-    for (const w of [...pointerWaiters]) w.run();
+    flushPointerWaiters();
   }, 0);
 }
-document.addEventListener('pointerdown', () => { pointerIsDown = true; }, true);
+document.addEventListener('pointerdown', () => {
+  pointerIsDown = true;
+  pointerGen++;
+}, true);
 // Window level too, and on blur: a press inside the page released outside the
 // window sends no pointerup to the document.
 for (const type of POINTER_END) {
@@ -422,8 +455,10 @@ for (const type of POINTER_END) {
   window.addEventListener(type, releasePointer, true);
 }
 window.addEventListener('blur', releasePointer);
-// A deferred render runs exactly once: on release, on window blur, or after
-// at most MAX_POINTER_WAIT_MS, whichever comes first.
+// A deferred render runs once the press ends (release, cancel or window
+// blur). The timer is only a safety net for a release we never hear about; it
+// must not render while the pointer is still held (a long press), so it
+// re-arms instead.
 const MAX_POINTER_WAIT_MS = 1000;
 function afterPointer(fn) {
   if (!pointerIsDown) {
@@ -437,10 +472,13 @@ function afterPointer(fn) {
       fn();
     },
   };
-  waiter.timer = setTimeout(() => {
-    pointerIsDown = false;
-    waiter.run();
-  }, MAX_POINTER_WAIT_MS);
+  const arm = () => {
+    waiter.timer = setTimeout(() => {
+      if (pointerIsDown) arm();
+      else waiter.run();
+    }, MAX_POINTER_WAIT_MS);
+  };
+  arm();
   pointerWaiters.add(waiter);
 }
 
@@ -597,11 +635,14 @@ function tick() {
 
   updateLongRunBanner();
 
+  // Only focus inside the rows being rebuilt blocks the refresh; a toolbar
+  // button that keeps focus after a click must not freeze the numbers.
   const dayView = document.getElementById('view-day');
   if (
     state.running &&
     dayView.classList.contains('is-active') &&
-    !dayView.contains(document.activeElement) &&
+    !document.getElementById('day-table-body').contains(document.activeElement) &&
+    !isConfirmOpen() &&
     n - lastDayRender > 15000
   ) {
     renderDay();
@@ -609,13 +650,14 @@ function tick() {
 
   // Same for the Week view: running time and totals move on without a click.
   // Skipped while a pointer is down or focus is inside it, since the rebuild
-  // would swallow the click or the focus.
+  // would swallow the click or the focus (focus on a toolbar button is fine).
   const weekView = document.getElementById('view-week');
   if (
     state.running &&
     weekView.classList.contains('is-active') &&
     !pointerIsDown &&
-    !weekView.contains(document.activeElement) &&
+    !document.getElementById('week-table').contains(document.activeElement) &&
+    !isConfirmOpen() &&
     n - lastWeekRender > 60000
   ) {
     renderWeek();
@@ -626,9 +668,33 @@ setInterval(tick, 1000);
 
 // ---------- keyboard shortcuts ----------
 
-// Space keeps its normal meaning on anything interactive (a focused Start
-// button must start its timer, not pause all).
+// Space keeps its normal meaning on a control you reached with the keyboard (a
+// focused Start button must start its timer, not pause all). A control that
+// only has focus because it was clicked does not count: after clicking Start
+// and Pause, Space still pauses everything.
 const INTERACTIVE = 'button, a[href], select, summary, input, textarea, [role="button"], [role="checkbox"], [role="tab"], [role="link"], [contenteditable]';
+
+// :focus-visible alone is not enough: Chromium starts matching it on a clicked
+// button as soon as any key is pressed (e.g. a digit shortcut). So also
+// remember which element got its focus from a press of the pointer.
+let pointerFocusedEl = null;
+let lastPointerDownAt = -Infinity;
+document.addEventListener('pointerdown', () => { lastPointerDownAt = performance.now(); }, true);
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Tab') lastPointerDownAt = -Infinity; // tabbing is keyboard focus, however soon after a click
+}, true);
+document.addEventListener('focusin', (e) => {
+  pointerFocusedEl = performance.now() - lastPointerDownAt < 500 ? e.target : null;
+}, true);
+
+function hasKeyboardFocus(el) {
+  if (el === pointerFocusedEl) return false;
+  try {
+    return el.matches(':focus-visible');
+  } catch (err) {
+    return true; // no :focus-visible support: keep the control's own Space
+  }
+}
 
 document.addEventListener('keydown', (e) => {
   if (isTypingTarget(document.activeElement)) return;
@@ -637,8 +703,8 @@ document.addEventListener('keydown', (e) => {
   if (!document.getElementById('view-timers').classList.contains('is-active')) return;
   if (e.key === ' ') {
     const el = document.activeElement;
-    if (el && el.closest(INTERACTIVE)) return;
-    e.preventDefault(); // no page scroll, also while the key repeats
+    if (el && el.closest(INTERACTIVE) && hasKeyboardFocus(el)) return;
+    e.preventDefault(); // no page scroll, and no click on a mouse-focused button
   }
   if (e.repeat) return; // holding a key must not toggle again and again
   if (e.key >= '1' && e.key <= '9') {
@@ -650,6 +716,7 @@ document.addEventListener('keydown', (e) => {
     persist();
     renderCards();
   } else if (e.key === 'n' || e.key === 'N') {
+    e.preventDefault(); // the new dossier field gets focus; the key must not be typed into it
     document.getElementById('new-timer-btn').click();
   }
 });
@@ -699,7 +766,7 @@ function restoreDayFocus(saved) {
 let dayRenderPending = false;
 function renderDayUnlessEditing() {
   const tbody = document.getElementById('day-table-body');
-  if (tbody.contains(document.activeElement)) {
+  if (tbody.contains(document.activeElement) || isConfirmOpen()) {
     dayRenderPending = true;
     return;
   }
@@ -812,7 +879,10 @@ function renderDay() {
     descInput.addEventListener('focus', () => fillSuggestions(descList, row.dossier));
     descInput.addEventListener('click', (e) => e.stopPropagation());
     const saveDescription = debouncedSave(() => {
-      state = core.setDescription(state, row.clockId, day, descInput.value);
+      // Another tab may have renamed this card meanwhile, which moves the
+      // day's time to a new clock: write to whoever owns the row now.
+      const owner = core.resolveDayRowOwner(state, row.clockId, day, row.dossier, now());
+      state = core.setDescription(state, owner, day, descInput.value);
       persist();
     });
     descInput.addEventListener('input', saveDescription.schedule);

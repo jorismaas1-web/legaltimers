@@ -34,16 +34,11 @@ jobs:
             echo "Served code must not make network requests or load remote resources (see README, Privacy)."
             exit 1
           fi
-      - name: CSP in _headers stays strict
-        run: |
-          csp=$(grep -E '^\s*Content-Security-Policy:' public/_headers)
-          for need in "default-src 'self'" "script-src 'self'" "connect-src 'none'"; do
-            echo "$csp" | grep -qF "$need" || { echo "_headers CSP lost: $need"; exit 1; }
-          done
-          if echo "$csp" | grep -qE "unsafe-inline|unsafe-eval"; then
-            echo "_headers CSP must not allow unsafe-inline or unsafe-eval."
-            exit 1
-          fi
+      - name: CSP in _headers and the meta tag stays strict
+        # Parses the policy per directive and compares exact values (script-src
+        # must be exactly 'self', not merely contain it), checks frame-ancestors
+        # in _headers and that the <meta> copy equals the header without it.
+        run: node e2e/csp.mjs
 
   e2e:
     # Runs the app in real browsers behind the real _headers (see e2e/server.mjs)

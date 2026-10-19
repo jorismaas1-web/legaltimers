@@ -29,7 +29,7 @@ browser language; switch with the NL/EN button).
   in later.
 - Long-run check: a timer that ran over 3 hours or past midnight asks
   whether that is right, and lets you correct the end time.
-- Keyboard shortcuts: `1`-`9` start/switch, space pauses all, `N` new timer.
+- Keyboard shortcuts: `1`-`9` start/switch, space pauses all (unless a button has keyboard focus), `N` new timer.
 - JSON backup export and import.
 - Light and dark mode, NL and EN.
 
