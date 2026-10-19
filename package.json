@@ -1,8 +1,23 @@
 {
   "name": "legaltimers",
+  "version": "0.1.0",
+  "description": "A free chess-clock timer for lawyers and tax advisers. Runs entirely in the browser, sends nothing.",
   "private": true,
   "type": "module",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/jorismaas1-web/legaltimers.git"
+  },
+  "bugs": {
+    "url": "https://github.com/jorismaas1-web/legaltimers/issues"
+  },
+  "homepage": "https://legaltimers.pages.dev",
+  "engines": {
+    "node": ">=20"
+  },
   "scripts": {
+    "start": "python3 -m http.server -d public",
     "test": "node --test"
   }
 }

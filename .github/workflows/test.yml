@@ -1,0 +1,28 @@
+name: test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        node: [20, 22]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+      - run: node --test
+      - name: No network calls in served code
+        run: |
+          if grep -rnE '\b(fetch|XMLHttpRequest|WebSocket|EventSource|sendBeacon)\s*\(|new (XMLHttpRequest|WebSocket|EventSource)|https?://' public/src public/index.html public/styles.css; then
+            echo "Served code must not make network requests or load remote resources (see README, Privacy)."
+            exit 1
+          fi

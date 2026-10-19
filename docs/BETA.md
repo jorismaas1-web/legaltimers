@@ -72,6 +72,11 @@ stopte.
 
 ## Feedback
 
-Stuur je bevindingen aan degene die je de link gaf. Een screenshot en de
-stappen die je deed helpen het meest. Stuur geen screenshots met
-cliëntgegevens die je niet zou willen delen.
+Stuur je bevindingen aan degene die je de link gaf, of maak een issue aan op
+https://github.com/jorismaas1-web/legaltimers/issues (dat is openbaar). Een
+screenshot en de stappen die je deed helpen het meest. Gebruik verzonnen
+dossiers in screenshots: nooit echte cliëntnamen, dossiernummers of
+omschrijvingen.
+
+Legal Timers is open source (MIT-licentie). De code staat op
+https://github.com/jorismaas1-web/legaltimers.
