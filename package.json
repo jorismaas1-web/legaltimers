@@ -18,6 +18,7 @@
   },
   "scripts": {
     "start": "python3 -m http.server -d public",
-    "test": "node --test"
+    "test": "node --test",
+    "test:e2e": "node --test e2e/*.e2e.mjs"
   }
 }

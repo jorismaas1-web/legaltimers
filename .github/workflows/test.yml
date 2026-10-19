@@ -21,11 +21,39 @@ jobs:
           node-version: ${{ matrix.node }}
       - run: node --test
       - name: No network calls in served code
-        # The canonical and og: tags carry absolute URLs to the site itself;
-        # browsers never fetch them, so only those exact lines are exempt.
+        # First, cheap line of defence. The real guard is the e2e job below.
+        # Scans every JS, CSS and HTML file under public/ (favicon.svg,
+        # sitemap.xml and robots.txt legitimately contain URLs and are not
+        # scanned). The canonical and og: tags carry absolute URLs to the site
+        # itself; browsers never fetch them, so only those exact lines are
+        # exempt.
         run: |
-          if grep -rnE '\b(fetch|XMLHttpRequest|WebSocket|EventSource|sendBeacon)\s*\(|new (XMLHttpRequest|WebSocket|EventSource)|https?://' public/src public/index.html public/styles.css \
+          files=$(find public -type f \( -name '*.js' -o -name '*.mjs' -o -name '*.css' -o -name '*.html' \))
+          if grep -nE '\b(fetch|XMLHttpRequest|WebSocket|EventSource|sendBeacon|importScripts)\s*\(|new (XMLHttpRequest|WebSocket|EventSource|Image)\b|\[\s*["'"'"'](fetch|XMLHttpRequest|WebSocket|EventSource|sendBeacon)["'"'"']\s*\]|createElement\(\s*["'"'"'](img|script|iframe|link|audio|video|embed|object)["'"'"']|\bimport\s*\(|serviceWorker|https?://' $files \
             | grep -vE '^public/index\.html:[0-9]+:<(link rel="canonical" href|meta property="og:(url|image)" content)="https://legaltimers\.com/'; then
             echo "Served code must not make network requests or load remote resources (see README, Privacy)."
             exit 1
           fi
+      - name: CSP in _headers stays strict
+        run: |
+          csp=$(grep -E '^\s*Content-Security-Policy:' public/_headers)
+          for need in "default-src 'self'" "script-src 'self'" "connect-src 'none'"; do
+            echo "$csp" | grep -qF "$need" || { echo "_headers CSP lost: $need"; exit 1; }
+          done
+          if echo "$csp" | grep -qE "unsafe-inline|unsafe-eval"; then
+            echo "_headers CSP must not allow unsafe-inline or unsafe-eval."
+            exit 1
+          fi
+
+  e2e:
+    # Runs the app in real browsers behind the real _headers (see e2e/server.mjs)
+    # and fails on any request beyond the site's own static files.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm install --no-save playwright@1.56.1
+      - run: npx playwright install --with-deps chromium firefox webkit
+      - run: node --test e2e/*.e2e.mjs

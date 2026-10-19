@@ -40,8 +40,17 @@ network requests after it loads: no accounts, no analytics, no external
 fonts or CDNs, no fetch, no XHR, no WebSocket. This is enforced by a Content
 Security Policy (`connect-src 'none'`), not just a promise, so you can check
 it yourself: open the browser DevTools Network tab and reload the page.
-Nothing should appear after the page's own files. CI also fails if served
-code gains a network call.
+Nothing should appear after the page's own files.
+
+What CI enforces: the browser enforces the CSP above; CI runs the app in
+Chromium, Firefox and WebKit behind the real `public/_headers` and fails on
+any request that is not a GET for one of the site's own static files (or that
+carries a query string), on any CSP violation, and on any page error. It also
+checks that `_headers` keeps `default-src 'self'`, `script-src 'self'` and
+`connect-src 'none'` without `unsafe-inline` or `unsafe-eval`, and a grep over
+the served JS, CSS and HTML rejects the obvious network APIs as a cheap first
+check. The grep alone is easy to evade; the browser tests and the CSP are the
+real guard.
 
 If you clear your browser data, your times are gone. Make a backup once in
 a while (Settings -> Backup). There is no sync between browsers or
@@ -81,6 +90,25 @@ time, midnight splitting, rounding, parsing, week aggregation, and so on),
 the storage load/save and backup validation in `public/src/storage.js`, and
 that the NL and EN dictionaries in `public/src/i18n.js` stay in sync.
 
+### Browser tests
+
+End-to-end tests run the real app in Chromium, Firefox and WebKit with
+[Playwright](https://playwright.dev). Playwright is not a dependency of the
+project; install it on demand:
+
+```bash
+npm install --no-save playwright@1.56.1
+npx playwright install chromium firefox webkit
+npm run test:e2e                       # or: node --test e2e/*.e2e.mjs
+BROWSERS=webkit npm run test:e2e       # a single engine
+```
+
+`e2e/server.mjs` serves `public/` with the headers from `public/_headers`, so
+the CSP is enforced. The tests check the network allowlist, that the CSP
+blocks fetch, WebSocket, off-origin images and inline scripts, and regressions
+for browser-specific and event-order bugs. Plain `node --test` only runs the
+unit tests.
+
 ## Code layout
 
 Everything that is served lives in `public/`:
@@ -98,6 +126,7 @@ Everything that is served lives in `public/`:
 Outside `public/` (not served):
 
 - `test/*.test.js`: tests, run with the Node built-in test runner.
+- `e2e/`: browser tests (Playwright) and the static server they use.
 - `docs/SPEC.md`: the full product spec.
 - `docs/GUIDE.md`: a short user guide (Dutch).
 
