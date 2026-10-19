@@ -62,8 +62,13 @@ function persist(opts) {
     return false;
   }
   const ok = result === 'ok';
+  // Unreadable data found at save time (not only at load) gets the banner too.
+  if (store.lastLoadProblem === 'unreadable') document.getElementById('storage-unreadable').hidden = false;
+  // The copy of unreadable data could not be kept: nothing is written until
+  // the user downloads it or goes on without it.
+  document.getElementById('storage-blocked').hidden = result !== 'blocked';
   // Stays visible until a later save succeeds.
-  document.getElementById('storage-warning').hidden = ok;
+  document.getElementById('storage-warning').hidden = ok || result === 'blocked';
   if (ok) document.getElementById('sync-notice').hidden = true;
   return ok;
 }
@@ -240,6 +245,15 @@ function createCardElement(clock) {
   descInput.setAttribute('list', descList.id);
 
   dossierInput.addEventListener('change', () => {
+    // Renaming moves the run start to midnight, which would make the
+    // long-run answer ("correct end time") resolve against 00:00. Ask first.
+    if (isRunningNeedingReview(clock.id)) {
+      const current = state.clocks.find((c) => c.id === clock.id);
+      dossierInput.value = current ? current.dossier : '';
+      document.getElementById('long-run-rename-notice').hidden = false;
+      document.getElementById('long-run-keep').focus();
+      return;
+    }
     state = core.renameClock(state, clock.id, dossierInput.value, now());
     state = core.recordDossierUsed(state, dossierInput.value);
     state = core.adoptBillableFromDossier(state, clock.id, now());
@@ -476,10 +490,17 @@ function longRunKey(clockId, startedAt) {
   return `${clockId}__${startedAt}`;
 }
 
+function isRunningNeedingReview(clockId) {
+  const r = state.running;
+  if (!r || r.clockId !== clockId) return false;
+  return core.needsLongRunReview(r, state.longRunDecisions[longRunKey(r.clockId, r.startedAt)], now());
+}
+
 function updateLongRunBanner() {
   const banner = document.getElementById('long-run-banner');
   if (!state.running) {
     banner.hidden = true;
+    document.getElementById('long-run-rename-notice').hidden = true;
     return;
   }
   const { clockId, startedAt } = state.running;
@@ -490,6 +511,7 @@ function updateLongRunBanner() {
     banner.hidden = false;
   } else {
     banner.hidden = true;
+    document.getElementById('long-run-rename-notice').hidden = true;
   }
 }
 
@@ -728,9 +750,10 @@ function renderDay() {
     };
     const hoursText = currentHours();
     const dossierNumber = core.extractDossierNumber(row.dossier);
-    // Ticking Entered records the amount that is on screen now.
+    // Ticking Entered records the amount shown at the last render (manual
+    // edits included), not the minutes a running timer has added since.
     const currentMinutes = () => {
-      const current = core.getDaySummaryRows(state, day, now()).find((r) => r.clockId === row.clockId);
+      const current = core.getDaySummaryRows(state, day, lastDayRender).find((r) => r.clockId === row.clockId);
       return current ? current.roundedMinutes : row.roundedMinutes;
     };
 
@@ -1019,13 +1042,20 @@ manualForm.addEventListener('submit', (e) => {
     manualTime.focus();
     return;
   }
+  const before = state;
   const res = core.addManualEntry(
     state,
     { dossier: manualDossier.value, day: manualDay || shownDay(), ms, description: manualDescription.value, billable: manualBillable.checked },
     now(),
   );
   state = res.state;
-  persist();
+  // A refused save (e.g. another tab saved first) keeps the form and its values.
+  if (!persist()) {
+    // On a conflict persist() reloaded the other tab's data; otherwise take the
+    // entry back out so submitting again does not add it twice.
+    if (state === res.state) state = before;
+    return;
+  }
   closeManualForm();
   renderDossierHistory();
   renderDay();
@@ -1240,8 +1270,17 @@ document.getElementById('settings-weekly-norm').addEventListener('change', (e) =
   renderWeeklyNorm();
 });
 document.getElementById('settings-delete-weeks').addEventListener('change', (e) => {
-  state = core.updateSettings(state, { deleteOlderThanWeeks: Number(e.target.value) || null });
-  persist();
+  const raw = e.target.value.trim();
+  const n = Number(raw);
+  const ok = raw === '' || (Number.isInteger(n) && n >= 1);
+  if (ok) {
+    state = core.updateSettings(state, { deleteOlderThanWeeks: raw === '' ? null : n });
+    persist();
+  } else {
+    // Keep the previous value; the import check only accepts whole weeks.
+    e.target.value = state.settings.deleteOlderThanWeeks || '';
+  }
+  document.getElementById('settings-delete-weeks-error').hidden = ok;
 });
 document.getElementById('settings-delete-weeks-btn').addEventListener('click', () => {
   const weeks = state.settings.deleteOlderThanWeeks;
@@ -1284,8 +1323,19 @@ document.getElementById('backup-export-btn').addEventListener('click', () => {
 
 document.getElementById('unreadable-download-btn').addEventListener('click', () => {
   downloadText(`legaltimers-unreadable-${today()}.json`, store.quarantinedRaw || '');
-  document.getElementById('storage-unreadable').hidden = true;
+  releaseUnreadable();
 });
+
+document.getElementById('unreadable-continue-btn').addEventListener('click', () => {
+  showConfirm(t('confirmContinueNoCopy'), releaseUnreadable, t('confirmContinueNoCopyOk'));
+});
+
+// The user has the copy or chose to go on without it: saving may resume.
+function releaseUnreadable() {
+  store.releaseCopy();
+  document.getElementById('storage-unreadable').hidden = true;
+  persist();
+}
 
 // Runs the render-critical core functions on a candidate state, so a backup
 // that passes the shape checks but would still crash the UI is refused

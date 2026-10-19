@@ -2,7 +2,7 @@
 // a storage backend; it is handed a `backend` object (localStorage, or a
 // fake with the same getItem/setItem shape) so it stays testable.
 
-import { createInitialState, SCHEMA_VERSION } from './core.js';
+import { createInitialState, SCHEMA_VERSION, startOfLocalDay, addDays } from './core.js';
 
 export const STORAGE_KEY = 'legaltimers:v1';
 
@@ -40,7 +40,6 @@ export function isValidState(data) {
 export const MAX_IMPORT_BYTES = 5 * 1024 * 1024;
 export const MAX_CLOCKS = 20000;
 export const MAX_SEGMENTS = 500000;
-const MAX_SEGMENT_MS = 24 * 60 * 60 * 1000;
 const DAY_RE = /^\d{4}-\d{2}-\d{2}$/;
 const ROUND_UNITS = [1, 5, 6, 10, 15];
 
@@ -137,7 +136,8 @@ export function validateBackup(data) {
   for (const s of data.segments) {
     if (!isPlainObject(s) || typeof s.clockId !== 'string' || !ids.has(s.clockId)) return fail('segment clockId');
     if (!isFiniteNum(s.start) || !isFiniteNum(s.end)) return fail('segment times');
-    if (!(s.start < s.end) || s.end - s.start > MAX_SEGMENT_MS) return fail('segment range');
+    // Within one local day (a DST-end day is 25 hours long, so no fixed cap).
+    if (!(s.start < s.end) || s.end > addDays(startOfLocalDay(s.start), 1)) return fail('segment range');
   }
   if (data.running !== null && data.running !== undefined) {
     const r = data.running;
@@ -230,27 +230,72 @@ function parseRev(data) {
   return isPlainObject(data) && Number.isInteger(data.rev) && data.rev >= 0 ? data.rev : 0;
 }
 
+// Whether load() would accept this stored text (valid JSON of a shape and
+// schema version this app can read).
+function isLoadable(raw) {
+  try {
+    const data = JSON.parse(raw);
+    return isValidState(data) && !(data.schemaVersion > SCHEMA_VERSION);
+  } catch (e) {
+    return false;
+  }
+}
+
 // Wraps a backend with load/save. Two safety nets:
 // - stored data that cannot be read is copied to a quarantine key before
 //   anything can overwrite it (`lastLoadProblem`, `quarantineKey` and
-//   `quarantinedRaw` tell the app);
+//   `quarantinedRaw` tell the app). If that copy cannot be written, saving
+//   to the main key is blocked until the app calls `releaseCopy()` (the user
+//   downloaded the copy or chose to go on without it);
 // - every save carries a revision, and a save from a stale snapshot (another
 //   tab saved in between) is refused instead of overwriting.
 export function createStorage(backend, key = STORAGE_KEY, clock = Date.now) {
   let knownRev = 0;
+  const prefix = `${key}:unreadable-`;
+
+  // An earlier copy with exactly this text (backends without key
+  // enumeration just never match).
+  function findExistingCopy(raw) {
+    try {
+      for (let i = 0; i < backend.length; i++) {
+        const k = backend.key(i);
+        if (k && k.startsWith(prefix) && backend.getItem(k) === raw) return k;
+      }
+    } catch (e) {
+      // no enumeration available
+    }
+    return null;
+  }
+
   const store = {
     lastLoadProblem: null, // null | 'unreadable'
     quarantineKey: null,
     quarantinedRaw: null,
+    copyUnsaved: false, // the copy only exists in memory; main-key saves are blocked
 
     quarantine(raw) {
-      store.quarantineKey = `${key}:unreadable-${clock()}`;
+      store.lastLoadProblem = 'unreadable';
       store.quarantinedRaw = raw; // also kept in memory, in case the write below fails
+      // Every reload of still-unreadable data would otherwise add another copy.
+      const existing = findExistingCopy(raw);
+      if (existing) {
+        store.quarantineKey = existing;
+        store.copyUnsaved = false;
+        return;
+      }
+      store.quarantineKey = `${prefix}${clock()}`;
       try {
         backend.setItem(store.quarantineKey, raw);
+        store.copyUnsaved = false;
       } catch (e) {
-        // best effort, e.g. quota
+        store.copyUnsaved = true; // e.g. quota
       }
+    },
+
+    // The user has the copy (downloaded) or accepted going on without it.
+    releaseCopy() {
+      store.copyUnsaved = false;
+      store.lastLoadProblem = null;
     },
 
     load() {
@@ -277,13 +322,13 @@ export function createStorage(backend, key = STORAGE_KEY, clock = Date.now) {
       } catch (e) {
         data = null;
       }
-      store.lastLoadProblem = 'unreadable';
       store.quarantine(raw);
       knownRev = parseRev(data);
       return defaultState();
     },
 
     // 'ok' | 'conflict' (another tab saved newer data; nothing written) |
+    // 'blocked' (unreadable data has no stored copy yet; nothing written) |
     // 'failed' (the backend refused the write). `force` is for a deliberate
     // overwrite such as importing a backup.
     trySave(state, { force = false } = {}) {
@@ -294,9 +339,12 @@ export function createStorage(backend, key = STORAGE_KEY, clock = Date.now) {
           try {
             current = parseRev(JSON.parse(raw));
           } catch (e) {
-            if (!store.quarantinedRaw) store.quarantine(raw); // never overwrite unreadable data unseen
+            // handled below
           }
+          // Never overwrite anything load() refuses without a copy of it.
+          if (!isLoadable(raw) && !(store.quarantinedRaw === raw && !store.copyUnsaved)) store.quarantine(raw);
         }
+        if (store.copyUnsaved) return 'blocked';
         if (!force && current > knownRev) return 'conflict';
         const rev = Math.max(current, knownRev) + 1;
         backend.setItem(key, JSON.stringify({ ...state, rev }));

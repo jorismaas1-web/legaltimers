@@ -39,11 +39,13 @@
 </nav>
 
 <main>
+<p id="storage-blocked" class="storage-warning" role="alert" data-i18n="storageBlocked" hidden>Je laatste wijziging is nog niet opgeslagen: de kopie van je onleesbare gegevens kon niet worden bewaard. Download de kopie, of ga door zonder kopie, dan wordt opslaan weer hervat.</p>
 <p id="storage-warning" class="storage-warning" data-i18n="storageWarning" hidden>Je browser staat niet toe dat deze pagina gegevens bewaart. Je tijden worden niet opgeslagen.</p>
 
 <div id="storage-unreadable" class="storage-warning" role="alert" hidden>
   <p data-i18n="storageUnreadable">Je opgeslagen gegevens konden niet worden gelezen. Er is een kopie bewaard in je browser en er staat nu een lege lijst. Download de kopie voordat je verdergaat.</p>
   <button type="button" id="unreadable-download-btn" data-i18n="storageUnreadableDownload">Download de bewaarde kopie</button>
+  <button type="button" id="unreadable-continue-btn" data-i18n="storageUnreadableContinue">Doorgaan zonder kopie</button>
 </div>
 <p id="sync-notice" class="storage-warning" role="status" data-i18n="syncConflict" hidden>Een ander tabblad heeft je tijden net gewijzigd. Je laatste actie is niet opgeslagen; doe hem opnieuw.</p>
 
@@ -58,6 +60,7 @@
     <span data-i18n="longRunBanner">Liep deze echt door?</span> <span id="long-run-dossier"></span>
     <button type="button" id="long-run-keep" data-i18n="longRunKeep">Klopt, laten staan</button>
     <button type="button" id="long-run-correct" data-i18n="longRunCorrect">Corrigeer eindtijd</button>
+    <p id="long-run-rename-notice" role="status" data-i18n="longRunRenameFirst" hidden>Deze timer loopt sinds gisteren of eerder. Beantwoord eerst de vraag hierboven, daarna kun je hem hernoemen.</p>
   </div>
   <div id="cards-grid" class="cards-grid"></div>
   <datalist id="dossier-history"></datalist>
@@ -170,6 +173,7 @@
     <label class="field">
       <span data-i18n="settingsDeleteOld">Verwijder alles ouder dan (weken)</span>
       <input type="number" id="settings-delete-weeks" name="deleteWeeks" min="1" step="1">
+      <span id="settings-delete-weeks-error" class="field-error" data-i18n="settingsDeleteOldInvalid" hidden>Vul een heel aantal weken in (1 of meer).</span>
     </label>
     <button type="button" id="settings-delete-weeks-btn" data-i18n="settingsDeleteOldApply">Opschonen</button>
   </form>

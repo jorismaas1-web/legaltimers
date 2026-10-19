@@ -199,6 +199,12 @@ export function renameClock(state, clockId, dossier, now) {
   }
   if (runBefore) {
     const { startedAt } = next.running;
+    // The long-run decision is keyed by startedAt; carry it to the new key.
+    const oldKey = `${clockId}__${startedAt}`;
+    if (next.longRunDecisions && next.longRunDecisions[oldKey] !== undefined) {
+      next.longRunDecisions[`${clockId}__${todayStart}`] = next.longRunDecisions[oldKey];
+      delete next.longRunDecisions[oldKey];
+    }
     next.segments.push(...splitSegment({ clockId: archivedId, start: startedAt, end: todayStart }));
     next.running = { ...next.running, startedAt: todayStart };
   }
@@ -749,11 +755,12 @@ function tsvField(v) {
 
 // Free text pasted into a spreadsheet must stay text: a leading apostrophe
 // stops "=SUM(...)" and the like from becoming a formula. "-" only counts
-// when it is followed by something other than a space or digit ("-5" and
-// "- note" are harmless).
+// when it is followed by something other than a space and the cell is not a
+// plain number ("-5", "-", "- note" are harmless, "-1+1" is a formula).
 function tsvText(v) {
   const s = tsvField(v);
-  return /^([=+@]|-[^\s\d])/.test(s) ? `'${s}` : s;
+  const formula = /^[=+@]/.test(s) || (/^-\S/.test(s) && !/^-\d+([.,]\d+)?$/.test(s));
+  return formula ? `'${s}` : s;
 }
 
 export const TSV_COLUMNS = ['date', 'project', 'dossier', 'hours', 'description', 'billable'];
