@@ -8,7 +8,7 @@ timer per matter, switch between them like a chess clock (starting one
 pauses the other), and get a rounded day and week overview you can copy
 into whatever you bill with.
 
-Try it: **https://legaltimers.pages.dev** (Dutch or English, follows your
+Try it: **https://legaltimers.com** (Dutch or English, follows your
 browser language; switch with the NL/EN button).
 
 ![Timers view with three matters, one running](docs/screenshots/timers.png)

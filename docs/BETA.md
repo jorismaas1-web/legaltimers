@@ -5,7 +5,7 @@ neer, en wie een timer start, pauzeert vanzelf de timer die liep. Aan het
 eind van de dag heb je een afgerond overzicht dat je per veld kunt kopiëren
 naar je urenregistratie.
 
-Link: https://legaltimers.pages.dev
+Link: https://legaltimers.com
 
 ## Privacy
 
