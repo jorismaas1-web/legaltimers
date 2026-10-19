@@ -1,5 +1,5 @@
-// All user-facing strings in one dictionary module. Keep a handful of Legal
-// Sense terms in NL even in the EN dictionary (see SPEC.md "Language").
+// All user-facing strings in one dictionary module. Every key exists in both
+// languages (test/i18n.test.js checks this).
 
 export const dictionaries = {
   nl: {
@@ -119,7 +119,7 @@ export const dictionaries = {
     dossierPlaceholder: 'Matter, e.g. Client BV / Matter / 2002100001',
     start: 'Start',
     pause: 'Pause',
-    ready: 'Gereed',
+    ready: 'Done',
     deleteTimer: 'Delete',
     confirmDeleteTimer: 'Delete this timer? Logged time stays visible in Day and Week.',
     confirmDeleteAllTimers: 'Delete all {count} timers? Logged time stays visible in Day and Week.',
@@ -137,12 +137,12 @@ export const dictionaries = {
     settingsDeleteOldConfirm: 'Permanently delete all times older than {weeks} weeks?',
     storageWarning: 'Your browser does not let this page store data. Your times are not being saved.',
     todayTotal: 'Total today',
-    daySummaryTitle: 'Tijdsoverzicht vandaag',
+    daySummaryTitle: 'Time overview today',
     colDossier: 'Matter',
     colExactTime: 'Exact time',
     colRoundedHours: 'Rounded hours',
     colDescription: 'Description',
-    colOvergenomen: 'Overgenomen',
+    colOvergenomen: 'Entered',
     copyDossier: 'Copy matter number',
     copyHours: 'Copy hours',
     copyDescription: 'Copy description',
@@ -194,7 +194,7 @@ export const dictionaries = {
     manualErrorDossier: 'Enter a matter.',
     manualErrorTime: 'Enter a time, e.g. 1:30 or 1.5.',
     exactTimeTitle: 'Change the time for this day, e.g. 1:30 or 1.5. 0 removes the row.',
-    notYetOvergenomen: ', not everything overgenomen yet',
+    notYetOvergenomen: ', not everything entered yet',
     settingsWeeklyNormInvalid: 'Not recognised. Enter a number of hours, e.g. 37.5.',
     tsv_date: 'date',
     tsv_project: 'project',

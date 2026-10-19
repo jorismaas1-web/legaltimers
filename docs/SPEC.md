@@ -1,7 +1,8 @@
-# legaltimers.com spec
+# Legal Timers spec
 
-A free, unbranded chess-clock timer for lawyers and tax advisers. Reference: the
-Legal Sense "Timers" (chessclocks) page. Agreed in a grilling session on 2026-10-07.
+A free, unbranded chess-clock timer for lawyers and tax advisers, modelled on the
+chess-clock timers found in Dutch legal practice-management software. This is the
+product spec the code is built against; keep it in sync when behaviour changes.
 
 ## Principles
 
@@ -15,7 +16,7 @@ Legal Sense "Timers" (chessclocks) page. Agreed in a grilling session on 2026-10
   (Cloudflare Pages) and mirrored in a `<meta http-equiv>` tag (frame-ancestors
   only in `_headers`). No inline scripts or inline styles (no `style=` attributes
   set from HTML; setting `element.style` from JS is fine).
-- No branding: no Lowkey, no employer, no personal names. Name: "Legal Timers".
+- No branding: no company, employer or personal names in the product. Name: "Legal Timers".
 - Not installable (no PWA, no service worker).
 
 ## Clock (one card)
@@ -137,7 +138,7 @@ Legal Sense "Timers" (chessclocks) page. Agreed in a grilling session on 2026-10
 
 ## UI
 
-- Card grid like Legal Sense (2-3 columns desktop, 1 column mobile).
+- Card grid (2-3 columns desktop, 1 column mobile).
 - Running card: clear colored border + background tint.
 - Browser tab title while running: "▶ 0:42 · <dossier>" (h:mm of today's total).
   Otherwise "Legal Timers".
@@ -154,8 +155,10 @@ Legal Sense "Timers" (chessclocks) page. Agreed in a grilling session on 2026-10
 
 - NL and EN, toggle in header; default from `navigator.language` (nl* -> NL,
   else EN); choice stored locally. All strings in one dictionary module.
-- Keep Legal Sense terms in NL: "Gereed", "Tijdsoverzicht vandaag",
-  "Nieuwe timer".
+- The NL strings use the terms Dutch practice software uses ("Gereed",
+  "Tijdsoverzicht vandaag", "Nieuwe timer", "Overgenomen"). The EN strings are
+  plain English ("Done", "Time overview today", "New timer", "Entered"). Both
+  dictionaries have the same keys (checked by `test/i18n.test.js`).
 
 ## Code layout
 
@@ -166,7 +169,8 @@ Legal Sense "Timers" (chessclocks) page. Agreed in a grilling session on 2026-10
   `src/i18n.js`.
 - `core.js` has no DOM or storage access; time is passed in (`now`) so it is
   testable.
-- Tests: `test/*.test.js` with `node --test` (built-in runner, no deps).
+- Tests: `test/*.test.js` with `node --test` (built-in runner, no deps), run by
+  GitHub Actions on every push and pull request.
 - `_headers` for Cloudflare Pages with the CSP and `X-Content-Type-Options:
   nosniff`, `Referrer-Policy: no-referrer`, `Permissions-Policy` minimal.
 
