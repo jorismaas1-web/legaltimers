@@ -41,6 +41,12 @@
 <main>
 <p id="storage-warning" class="storage-warning" data-i18n="storageWarning" hidden>Je browser staat niet toe dat deze pagina gegevens bewaart. Je tijden worden niet opgeslagen.</p>
 
+<div id="storage-unreadable" class="storage-warning" role="alert" hidden>
+  <p data-i18n="storageUnreadable">Je opgeslagen gegevens konden niet worden gelezen. Er is een kopie bewaard in je browser en er staat nu een lege lijst. Download de kopie voordat je verdergaat.</p>
+  <button type="button" id="unreadable-download-btn" data-i18n="storageUnreadableDownload">Download de bewaarde kopie</button>
+</div>
+<p id="sync-notice" class="storage-warning" role="status" data-i18n="syncConflict" hidden>Een ander tabblad heeft je tijden net gewijzigd. Je laatste actie is niet opgeslagen; doe hem opnieuw.</p>
+
 <section id="view-timers" class="view is-active">
   <div class="toolbar">
     <button type="button" id="new-timer-btn" data-i18n="newTimer">Nieuwe timer</button>
