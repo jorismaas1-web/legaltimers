@@ -24,7 +24,14 @@ product spec the code is built against; keep it in sync when behaviour changes.
 - Dossier line: one free-text field, e.g. "Client BV / Matter / 2002100001".
   Autocomplete (datalist is fine) from dossiers used before, most recent first.
 - Time: shown as hh:mm:ss, editable by hand (parse h:mm, h:mm:ss, decimal "1.5"
-  or "1,5").
+  or "1,5"). Input above 24 hours, or not a finite number, is refused (the
+  weekly target accepts up to 168 hours).
+- Renaming a card changes today, not earlier days: time before today
+  (segments, adjustments, day data, and the part of a run before today's
+  midnight, which the run then continues from) moves to an archived card with
+  the old dossier. Today's time stays with the renamed card, so a typo fixed
+  the same day just renames. A card with no earlier time, or no old dossier,
+  just renames.
 - Description line under the dossier: today's description for this clock (the
   same value the day summary shows and copies). Suggestions (datalist) from
   earlier descriptions on any card with the same dossier, most recent first.
@@ -53,9 +60,12 @@ product spec the code is built against; keep it in sync when behaviour changes.
   total equals the entered value.
 - Long-run check: when a clock has run > 3 hours continuously, or ran past
   midnight, show a banner "Liep deze echt door?" (naming the dossier) with
-  options keep / correct. Correct asks for the clock time you stopped
+  options keep / correct. Keep stores the time it was chosen; the banner
+  comes back after 3 more hours or on a new day (an old "keep" string never
+  asks again). Correct asks for the clock time you stopped
   (e.g. 17:30); an end time before the start means the next day, and the end
-  is never later than now.
+  is never later than now. When the clocks go back, the repeated hour is
+  resolved so the end is after the start (02:15 to 02:45 is 30 minutes).
 
 ## Gereed and day summary
 
@@ -76,7 +86,10 @@ product spec the code is built against; keep it in sync when behaviour changes.
   timer has that day) for the day shown, so past days work too. The time
   adds to that dossier's timer for that day (stored as an adjustment);
   descriptions are joined with "; ". A dossier without a timer gets an
-  archived one, so the entry shows in Day and Week but adds no card.
+  archived one, so the entry shows in Day and Week but adds no card. If the
+  timer already has time that day with the other billable flag, the entry goes
+  to another timer of the dossier with the matching flag (or a new archived
+  one), so existing time is never reclassified: the dossier gets two rows.
 - The exact time in each row is editable (same input formats); it sets
   that day's time for the timer, and 0 removes the row.
 - Each row has a delete button (✕, with a confirm dialog) that removes that
@@ -86,13 +99,22 @@ product spec the code is built against; keep it in sync when behaviour changes.
 - Rounding: default 6-minute units, rounded up (7 min -> 0.2 h). Setting:
   unit 1/5/6/10/15 min, mode up/nearest. Display format setting: decimal (1.7)
   or h:mm (1:42). Less than 30 seconds on a day (a misclick) rounds to 0 and
-  the row is not shown. Totals are summed in whole minutes, so h:mm totals
-  never drift.
+  the row is not shown. In decimal format a total is the sum of the rows'
+  2-decimal hours (three 5-minute rows copy as 0.08 each and total 0.24); in
+  h:mm format totals are summed in whole minutes, so they never drift.
 - Copy buttons per row, in AFAS field order (Project, Aantal, Toelichting;
   werksoort is not copied; there is no activity field at all): dossier number (the last "/"-separated part if it
   is numeric, else full dossier line), hours (rounded, in chosen format;
   decimal comma when the UI is NL), description.
-- Clicking the row (outside inputs/buttons) toggles "overgenomen".
+- Clicking the row (outside inputs/buttons) toggles "overgenomen". Ticking
+  stores the rounded minutes at that moment; the mark only counts while the
+  row still rounds to that amount (more time, a changed rounding setting).
+  Otherwise the row shows as not entered with "eerder overgenomen: 1,5" next
+  to the checkbox. Billable and description edits do not affect it, and marks
+  from before this rule (no stored amount) always count.
+- Copy for the day table (TSV): text cells starting with =, + or @, or with -
+  followed by a non-space non-digit, get a leading apostrophe so spreadsheets
+  keep them as text. Date and hours columns are untouched.
 - Copy buttons briefly show ✓ (or ✗ if the browser refused).
 - "Kopieer dag als tabel": TSV with header: date, project, dossier, hours,
   description, billable (labels in the UI language). Tabs/newlines inside fields become spaces.
@@ -108,7 +130,8 @@ product spec the code is built against; keep it in sync when behaviour changes.
 - A card that gets the dossier of an earlier non-billable card takes over
   that setting (e.g. an internal dossier recreated next week).
 - The day summary has a toggle per row that changes only that day.
-- Totals use rounded hours (each row rounded, then summed), as booked.
+- Totals use rounded hours (each row rounded, then summed), as booked: in
+  decimal format the sum of the 2-decimal row values, in h:mm whole minutes.
 - Header: next to the exact total, the rounded total split into billable and
   non-billable ("afgerond 2,6: 1,2 declarabel, 1,4 niet declarabel").
 - Day summary: footer row with total, billable, non-billable and % billable.
@@ -126,7 +149,7 @@ product spec the code is built against; keep it in sync when behaviour changes.
   day and per week. Previous / next week arrows; "this week" button.
 - Days with rows not yet "overgenomen" get a dot marker. Clicking a day
   header opens that day in the Day view.
-- History kept indefinitely; settings has "delete everything older than X weeks".
+- History kept indefinitely; settings has "delete everything older than X weeks". A clock still running from before the cutoff continues from the cutoff, so pausing never brings deleted days back.
 
 ## Backup
 

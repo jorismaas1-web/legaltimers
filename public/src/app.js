@@ -158,7 +158,7 @@ function createCardElement(clock) {
   descInput.setAttribute('list', descList.id);
 
   dossierInput.addEventListener('change', () => {
-    state = core.updateClock(state, clock.id, { dossier: dossierInput.value });
+    state = core.renameClock(state, clock.id, dossierInput.value, now());
     state = core.recordDossierUsed(state, dossierInput.value);
     state = core.adoptBillableFromDossier(state, clock.id, now());
     persist();
@@ -369,7 +369,7 @@ function updateLongRunBanner() {
   }
   const { clockId, startedAt } = state.running;
   const key = longRunKey(clockId, startedAt);
-  if (core.isLongRun(startedAt, now()) && state.longRunDecisions[key] !== 'keep') {
+  if (core.needsLongRunReview(state.running, state.longRunDecisions[key], now())) {
     const clock = state.clocks.find((c) => c.id === clockId);
     document.getElementById('long-run-dossier').textContent = clock && clock.dossier ? `(${clock.dossier})` : '';
     banner.hidden = false;
@@ -381,7 +381,7 @@ function updateLongRunBanner() {
 document.getElementById('long-run-keep').addEventListener('click', () => {
   if (!state.running) return;
   const key = longRunKey(state.running.clockId, state.running.startedAt);
-  state = { ...state, longRunDecisions: { ...state.longRunDecisions, [key]: 'keep' } };
+  state = { ...state, longRunDecisions: { ...state.longRunDecisions, [key]: { keptAt: now() } } };
   persist();
   updateLongRunBanner();
 });
@@ -526,6 +526,11 @@ function renderDay() {
     };
     const hoursText = currentHours();
     const dossierNumber = core.extractDossierNumber(row.dossier);
+    // Ticking Entered records the amount that is on screen now.
+    const currentMinutes = () => {
+      const current = core.getDaySummaryRows(state, day, now()).find((r) => r.clockId === row.clockId);
+      return current ? current.roundedMinutes : row.roundedMinutes;
+    };
 
     const tdDossier = document.createElement('td');
     tdDossier.append(row.dossier, copyButton(dossierNumber, t('copyDossier')));
@@ -599,11 +604,17 @@ function renderDay() {
     checkbox.checked = row.overgenomen;
     checkbox.addEventListener('click', (e) => e.stopPropagation());
     checkbox.addEventListener('change', () => {
-      state = core.setOvergenomen(state, row.clockId, day, checkbox.checked);
+      state = core.setOvergenomen(state, row.clockId, day, checkbox.checked, currentMinutes());
       persist();
       renderDay();
     });
     tdOvergenomen.appendChild(checkbox);
+    if (row.enteredMinutes !== undefined) {
+      const hint = document.createElement('span');
+      hint.className = 'entered-before';
+      hint.textContent = t('enteredBefore', { hours: formatHoursForDisplay(row.enteredMinutes / 60) });
+      tdOvergenomen.appendChild(hint);
+    }
 
     const tdDelete = document.createElement('td');
     const deleteBtn = document.createElement('button');
@@ -626,7 +637,7 @@ function renderDay() {
     tr.append(tdDossier, tdExact, tdHours, tdDescription, tdBillable, tdOvergenomen, tdDelete);
     tr.addEventListener('click', (e) => {
       if (e.target.closest('input, button, a')) return;
-      state = core.setOvergenomen(state, row.clockId, day, !row.overgenomen);
+      state = core.setOvergenomen(state, row.clockId, day, !row.overgenomen, currentMinutes());
       persist();
       renderDay();
     });
@@ -818,6 +829,7 @@ function renderWeek() {
   const agg = core.aggregateWeek(state, weekCursor, n, {
     roundUnitMinutes: state.settings.roundUnitMinutes,
     roundMode: state.settings.roundMode,
+    hoursFormat: state.settings.hoursFormat,
   });
   const labels = state.settings.language === 'nl' ? WEEKDAY_LABELS_NL : WEEKDAY_LABELS_EN;
 
@@ -983,7 +995,7 @@ document.getElementById('settings-hours-format').addEventListener('change', (e) 
 // Anything else keeps the old target.
 document.getElementById('settings-weekly-norm').addEventListener('change', (e) => {
   const raw = e.target.value.trim();
-  const ms = raw === '' ? null : core.parseTimeInput(raw);
+  const ms = raw === '' ? null : core.parseTimeInput(raw, 168);
   const ok = raw === '' || ms > 0;
   if (ok) {
     state = core.updateSettings(state, { weeklyBillableNorm: ms ? ms / 3600000 : null });

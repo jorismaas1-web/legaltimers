@@ -52,13 +52,14 @@ Sneltoetsen op het Timers-tabblad: `1` t/m `9` start of wisselt naar die
 timer, spatie pauzeert alles, `N` maakt een nieuwe timer.
 
 Liep een timer langer dan 3 uur of over middernacht door, dan vraagt de
-pagina of dat klopt. Met **Corrigeer eindtijd** vul je in hoe laat je echt
+pagina of dat klopt. Kies je **Klopt, laten staan**, dan vraagt de pagina het na 3 uur of op een nieuwe dag opnieuw. Met **Corrigeer eindtijd** vul je in hoe laat je echt
 stopte.
 
 ## Bekende beperkingen
 
 - Geen synchronisatie tussen computers of browsers, bewust.
-- Een timer hernoemen verandert de naam ook op eerdere dagen.
+- Een timer hernoemen geldt vanaf vandaag: de tijd van eerdere dagen blijft
+  bij de oude naam staan (als aparte regel in Dag en Week).
 - Getest in Chromium (Chrome, Edge), Firefox en WebKit (Safari). Doet iets
   het in jouw browser anders, meld het dan.
 

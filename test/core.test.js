@@ -591,13 +591,13 @@ test('a manual entry for an existing timer adds to its row and joins the descrip
   state = core.pauseRunning(state, t0 + 30 * 60000);
   state = core.setDescription(state, clockId, '2026-10-08', 'SPA review');
   const now = localMs(2026, 10, 10, 12, 0, 0);
-  const res = core.addManualEntry(state, { dossier: 'Acme / 1', day: '2026-10-08', ms: 15 * 60000, description: 'Call', billable: false }, now);
+  const res = core.addManualEntry(state, { dossier: 'Acme / 1', day: '2026-10-08', ms: 15 * 60000, description: 'Call', billable: true }, now);
   assert.equal(res.clockId, clockId);
   const rows = core.getDaySummaryRows(res.state, '2026-10-08', now);
   assert.equal(rows.length, 1);
   assert.equal(rows[0].elapsedMs, 45 * 60000);
   assert.equal(rows[0].description, 'SPA review; Call');
-  assert.equal(rows[0].billable, false);
+  assert.equal(rows[0].billable, true);
   // other days of that timer are untouched
   assert.equal(core.isBillable(res.state, clockId, '2026-10-09'), true);
 });
