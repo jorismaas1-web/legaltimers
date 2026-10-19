@@ -515,8 +515,16 @@ function renderDay() {
     tr.classList.toggle('row-overgenomen', row.overgenomen);
     tr.classList.toggle('row-nonbillable', !row.billable);
 
-    const roundedHours = core.roundHoursMs(row.elapsedMs, state.settings.roundUnitMinutes, state.settings.roundMode);
-    const hoursDisplay = formatHoursForDisplay(roundedHours);
+    // Read from state, not from `row`: after a time edit the table re-renders
+    // only once the click has landed, so a Copy click in this row must not
+    // see the old value. (The shown hours are not updated mid-click either:
+    // a wider number would shift the copy button out from under the pointer.)
+    const currentHours = () => {
+      const current = core.getDaySummaryRows(state, day, now()).find((r) => r.clockId === row.clockId);
+      const ms = current ? current.elapsedMs : 0;
+      return formatHoursForDisplay(core.roundHoursMs(ms, state.settings.roundUnitMinutes, state.settings.roundMode));
+    };
+    const hoursText = currentHours();
     const dossierNumber = core.extractDossierNumber(row.dossier);
 
     const tdDossier = document.createElement('td');
@@ -553,7 +561,7 @@ function renderDay() {
     tdExact.appendChild(exactInput);
 
     const tdHours = document.createElement('td');
-    tdHours.append(hoursDisplay, copyButton(hoursDisplay, t('copyHours')));
+    tdHours.append(hoursText, copyButton(currentHours, t('copyHours')));
 
     const tdDescription = document.createElement('td');
     const descInput = document.createElement('input');
