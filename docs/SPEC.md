@@ -180,6 +180,11 @@ product spec the code is built against; keep it in sync when behaviour changes.
 - Keyboard shortcuts (Timers view only; ignored while typing in an input, with
   Ctrl/Cmd/Alt held, or while a dialog is open): 1-9 start/switch clock
   at that position, Space pause all, N new timer. Listed in a small help line.
+  Space keeps its normal meaning (pressing the button) only on a control the
+  user reached with the keyboard (`:focus-visible`, and not a control that
+  got focus from a pointer press); after clicking a button, Space still
+  pauses all. A held key does not repeat the action, and N does not type
+  into the new dossier field (default prevented).
 - System font, calm neutral styling, light/dark via prefers-color-scheme.
 - No badge next to the title.
 - Line on the page: "Alles blijft in je browser. Deze site verstuurt niets." plus
