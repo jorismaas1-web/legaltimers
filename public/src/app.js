@@ -60,7 +60,7 @@ function rerenderAll() {
   applyI18n();
   renderDossierHistory();
   renderCards();
-  renderDay();
+  renderDayUnlessEditing();
   renderWeek();
   renderSettings();
 }
@@ -87,7 +87,10 @@ function applyI18n() {
 
 function setActiveTab(tab) {
   for (const btn of document.querySelectorAll('.tab-btn')) {
-    btn.classList.toggle('is-active', btn.dataset.tab === tab);
+    const active = btn.dataset.tab === tab;
+    btn.classList.toggle('is-active', active);
+    btn.setAttribute('aria-selected', String(active));
+    btn.tabIndex = active ? 0 : -1; // roving tabindex: arrow keys move between tabs
   }
   for (const view of document.querySelectorAll('.view')) {
     view.classList.toggle('is-active', view.id === `view-${tab}`);
@@ -104,20 +107,43 @@ document.getElementById('tabs').addEventListener('click', (e) => {
   setActiveTab(btn.dataset.tab);
 });
 
+// Standard tablist keys: Left/Right (wrapping), Home, End; the tab you land
+// on is activated right away.
+document.getElementById('tabs').addEventListener('keydown', (e) => {
+  if (e.metaKey || e.ctrlKey || e.altKey) return;
+  const btns = [...document.querySelectorAll('.tab-btn')];
+  const i = btns.indexOf(document.activeElement);
+  if (i < 0) return;
+  let target = null;
+  if (e.key === 'ArrowRight') target = btns[(i + 1) % btns.length];
+  else if (e.key === 'ArrowLeft') target = btns[(i - 1 + btns.length) % btns.length];
+  else if (e.key === 'Home') target = btns[0];
+  else if (e.key === 'End') target = btns[btns.length - 1];
+  if (!target) return;
+  e.preventDefault();
+  target.focus();
+  target.click();
+});
+
 // ---------- confirm dialog ----------
 
 function showConfirm(message, onConfirm, okLabel = t('delete')) {
   const dialog = document.getElementById('confirm-dialog');
   document.getElementById('confirm-message').textContent = message;
+  const opener = document.activeElement;
   dialog.hidden = false;
   const ok = document.getElementById('confirm-ok');
   const cancel = document.getElementById('confirm-cancel');
   ok.textContent = okLabel;
-  ok.focus();
+  // Every confirm here deletes or replaces data, so focus starts on the safe
+  // button.
+  cancel.focus();
   function cleanup() {
     dialog.hidden = true;
     ok.removeEventListener('click', onOk);
     cancel.removeEventListener('click', onCancel);
+    document.removeEventListener('keydown', onKey, true);
+    if (opener && opener.isConnected && typeof opener.focus === 'function') opener.focus();
   }
   function onOk() {
     cleanup();
@@ -126,8 +152,23 @@ function showConfirm(message, onConfirm, okLabel = t('delete')) {
   function onCancel() {
     cleanup();
   }
+  // Keep Tab inside the dialog and let Escape cancel.
+  function onKey(e) {
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      e.stopPropagation();
+      onCancel();
+    } else if (e.key === 'Tab') {
+      const order = [cancel, ok];
+      const i = order.indexOf(document.activeElement);
+      e.preventDefault();
+      const next = e.shiftKey ? (i <= 0 ? order.length - 1 : i - 1) : (i + 1) % order.length;
+      order[i < 0 ? 0 : next].focus();
+    }
+  }
   ok.addEventListener('click', onOk);
   cancel.addEventListener('click', onCancel);
+  document.addEventListener('keydown', onKey, true);
 }
 
 // ---------- cards (Timers view) ----------
@@ -136,6 +177,27 @@ function isTypingTarget(el) {
   if (!el) return false;
   const tag = el.tagName;
   return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT';
+}
+
+// Descriptions are saved while typing (not only on `change`), so text typed
+// without leaving the field survives a reload or crash.
+const DESCRIPTION_SAVE_MS = 500;
+function debouncedSave(save) {
+  let timer = null;
+  return {
+    schedule() {
+      clearTimeout(timer);
+      timer = setTimeout(() => {
+        timer = null;
+        save();
+      }, DESCRIPTION_SAVE_MS);
+    },
+    flush() {
+      clearTimeout(timer);
+      timer = null;
+      save();
+    },
+  };
 }
 
 function createCardElement(clock) {
@@ -172,22 +234,30 @@ function createCardElement(clock) {
     descInput.dataset.day = today();
     fillSuggestions(descList, dossierInput.value);
   });
-  descInput.addEventListener('change', () => {
+  const saveCardDescription = debouncedSave(() => {
+    if (!state.clocks.some((c) => c.id === clock.id)) return;
     state = core.setDescription(state, clock.id, descInput.dataset.day || today(), descInput.value);
     persist();
   });
+  descInput.addEventListener('input', saveCardDescription.schedule);
+  descInput.addEventListener('change', saveCardDescription.flush);
   billableBtn.addEventListener('click', () => {
     state = core.setClockBillable(state, clock.id, !core.isBillable(state, clock.id, today()), now());
     persist();
     renderCards();
   });
+  // Like the description: an edit begun before midnight stays on that day.
+  timeInput.addEventListener('focus', () => {
+    timeInput.dataset.day = today();
+  });
   timeInput.addEventListener('change', () => {
+    const day = timeInput.dataset.day || today();
     const ms = core.parseTimeInput(timeInput.value);
     if (ms === null) {
-      timeInput.value = core.formatHMS(core.elapsedForDay(state, clock.id, today(), now()));
+      timeInput.value = core.formatHMS(core.elapsedForDay(state, clock.id, day, now()));
       return;
     }
-    state = core.setManualElapsed(state, clock.id, today(), ms, now());
+    state = core.setManualElapsed(state, clock.id, day, ms, now());
     persist();
     tick();
   });
@@ -239,6 +309,10 @@ function renderCards() {
     const billable = core.isBillable(state, clock.id, day);
     if (document.activeElement !== entry.dossierInput) entry.dossierInput.value = clock.dossier;
     entry.dossierInput.placeholder = t('dossierPlaceholder');
+    const dossierName = clock.dossier.trim() || t('unnamedDossier');
+    entry.dossierInput.setAttribute('aria-label', t('cardDossierLabel'));
+    entry.descInput.setAttribute('aria-label', t('cardDescriptionLabel', { dossier: dossierName }));
+    entry.timeInput.setAttribute('aria-label', t('cardTimeLabel', { dossier: dossierName }));
     entry.descInput.placeholder = t('descriptionPlaceholder');
     syncCardDescription(entry, clock.id, day);
     entry.node.classList.toggle('is-running', running);
@@ -298,21 +372,42 @@ function setText(el, text) {
 // another row) is lost in every browser. While a pointer is down, run the
 // re-render only after the click has landed.
 let pointerIsDown = false;
+const pointerWaiters = new Set();
 const POINTER_END = ['pointerup', 'pointercancel'];
-document.addEventListener('pointerdown', () => { pointerIsDown = true; }, true);
-for (const type of POINTER_END) {
-  document.addEventListener(type, () => { setTimeout(() => { pointerIsDown = false; }, 0); }, true);
+function releasePointer() {
+  setTimeout(() => {
+    pointerIsDown = false;
+    for (const w of [...pointerWaiters]) w.run();
+  }, 0);
 }
+document.addEventListener('pointerdown', () => { pointerIsDown = true; }, true);
+// Window level too, and on blur: a press inside the page released outside the
+// window sends no pointerup to the document.
+for (const type of POINTER_END) {
+  document.addEventListener(type, releasePointer, true);
+  window.addEventListener(type, releasePointer, true);
+}
+window.addEventListener('blur', releasePointer);
+// A deferred render runs exactly once: on release, on window blur, or after
+// at most MAX_POINTER_WAIT_MS, whichever comes first.
+const MAX_POINTER_WAIT_MS = 1000;
 function afterPointer(fn) {
   if (!pointerIsDown) {
     fn();
     return;
   }
-  const run = () => {
-    for (const type of POINTER_END) document.removeEventListener(type, run, true);
-    setTimeout(fn, 0);
+  const waiter = {
+    run() {
+      if (!pointerWaiters.delete(waiter)) return;
+      clearTimeout(waiter.timer);
+      fn();
+    },
   };
-  for (const type of POINTER_END) document.addEventListener(type, run, true);
+  waiter.timer = setTimeout(() => {
+    pointerIsDown = false;
+    waiter.run();
+  }, MAX_POINTER_WAIT_MS);
+  pointerWaiters.add(waiter);
 }
 
 function setBillableToggle(btn, billable, title, suffix = '') {
@@ -414,6 +509,10 @@ function tick() {
   // Rendering the day view replaces its inputs, so a description still being
   // typed there is saved first (blur fires its change handler).
   if (lastTickDay !== null && lastTickDay !== day) {
+    // A Week view showing the week of the day that just ended ("this week")
+    // moves on to the new current week; a week the user browsed to stays.
+    const [py, pm, pd] = lastTickDay.split('-').map(Number);
+    if (weekCursor === core.getWeekStart(new Date(py, pm - 1, pd, 12).getTime())) weekCursor = core.getWeekStart(n);
     lastTickDay = day;
     if (document.getElementById('view-day').contains(document.activeElement)) document.activeElement.blur();
     renderCards();
@@ -465,23 +564,46 @@ function tick() {
   ) {
     renderDay();
   }
+
+  // Same for the Week view: running time and totals move on without a click.
+  // Skipped while a pointer is down or focus is inside it, since the rebuild
+  // would swallow the click or the focus.
+  const weekView = document.getElementById('view-week');
+  if (
+    state.running &&
+    weekView.classList.contains('is-active') &&
+    !pointerIsDown &&
+    !weekView.contains(document.activeElement) &&
+    n - lastWeekRender > 60000
+  ) {
+    renderWeek();
+  }
 }
 
 setInterval(tick, 1000);
 
 // ---------- keyboard shortcuts ----------
 
+// Space keeps its normal meaning on anything interactive (a focused Start
+// button must start its timer, not pause all).
+const INTERACTIVE = 'button, a[href], select, summary, input, textarea, [role="button"], [role="checkbox"], [role="tab"], [role="link"], [contenteditable]';
+
 document.addEventListener('keydown', (e) => {
   if (isTypingTarget(document.activeElement)) return;
   if (e.metaKey || e.ctrlKey || e.altKey) return;
   if (!document.getElementById('confirm-dialog').hidden) return;
   if (!document.getElementById('view-timers').classList.contains('is-active')) return;
+  if (e.key === ' ') {
+    const el = document.activeElement;
+    if (el && el.closest(INTERACTIVE)) return;
+    e.preventDefault(); // no page scroll, also while the key repeats
+  }
+  if (e.repeat) return; // holding a key must not toggle again and again
   if (e.key >= '1' && e.key <= '9') {
     const idx = Number(e.key) - 1;
     const clock = core.activeClocks(state)[idx];
     if (clock) toggleStartPause(clock.id);
   } else if (e.key === ' ') {
-    e.preventDefault();
     state = core.pauseAll(state, now());
     persist();
     renderCards();
@@ -498,8 +620,66 @@ function shownDay() {
   return dayCursor || today();
 }
 
+// A rebuild must not steal focus: remember which control of which row has it
+// (and the caret) and put it back on the new row.
+function captureDayFocus() {
+  const el = document.activeElement;
+  const tbody = document.getElementById('day-table-body');
+  if (!el || !tbody.contains(el) || !el.dataset.control) return null;
+  const tr = el.closest('tr[data-clock-id]');
+  if (!tr) return null;
+  const isText = el.tagName === 'INPUT' && el.type === 'text';
+  return {
+    clockId: tr.dataset.clockId,
+    control: el.dataset.control,
+    start: isText ? el.selectionStart : null,
+    end: isText ? el.selectionEnd : null,
+  };
+}
+
+function restoreDayFocus(saved) {
+  if (!saved) return;
+  const tr = [...document.querySelectorAll('#day-table-body tr[data-clock-id]')].find((r) => r.dataset.clockId === saved.clockId);
+  const el = tr && [...tr.querySelectorAll('[data-control]')].find((c) => c.dataset.control === saved.control);
+  if (!el) return;
+  el.focus();
+  if (saved.start !== null) {
+    try {
+      el.setSelectionRange(saved.start, saved.end);
+    } catch (e) {
+      // not a selectable input
+    }
+  }
+}
+
+// A re-render caused by another tab must not destroy the input being typed
+// in: wait until focus leaves the table, then rebuild once.
+let dayRenderPending = false;
+function renderDayUnlessEditing() {
+  const tbody = document.getElementById('day-table-body');
+  if (tbody.contains(document.activeElement)) {
+    dayRenderPending = true;
+    return;
+  }
+  renderDay();
+}
+document.getElementById('day-table-body').addEventListener('focusout', () => {
+  if (!dayRenderPending) return;
+  // Let focus settle on its next element first; stay pending if it is still
+  // in the table (or the window itself lost focus).
+  setTimeout(() => {
+    if (!dayRenderPending || document.getElementById('day-table-body').contains(document.activeElement)) return;
+    afterPointer(() => {
+      if (dayRenderPending) renderDay();
+    });
+  }, 0);
+});
+
 function renderDay() {
+  dayRenderPending = false;
+  const focusBefore = captureDayFocus();
   lastDayRender = now();
+  updateManualDayLabel();
   const day = shownDay();
   const isToday = day === today();
   const n = now();
@@ -512,6 +692,8 @@ function renderDay() {
 
   for (const row of rows) {
     const tr = document.createElement('tr');
+    tr.dataset.clockId = row.clockId;
+    const rowName = row.dossier.trim() || t('unnamedDossier');
     tr.classList.toggle('row-overgenomen', row.overgenomen);
     tr.classList.toggle('row-nonbillable', !row.billable);
 
@@ -528,7 +710,7 @@ function renderDay() {
     const dossierNumber = core.extractDossierNumber(row.dossier);
 
     const tdDossier = document.createElement('td');
-    tdDossier.append(row.dossier, copyButton(dossierNumber, t('copyDossier')));
+    tdDossier.append(row.dossier, copyButton(dossierNumber, t('copyDossier'), rowName, 'copy-dossier'));
     if (row.ready) {
       const badge = document.createElement('span');
       badge.className = 'ready-badge';
@@ -543,6 +725,8 @@ function renderDay() {
     exactInput.className = 'day-exact';
     exactInput.value = core.formatHMS(row.elapsedMs);
     exactInput.title = t('exactTimeTitle');
+    exactInput.dataset.control = 'exact';
+    exactInput.setAttribute('aria-label', t('rowExactLabel', { dossier: rowName }));
     exactInput.autocomplete = 'off';
     exactInput.addEventListener('click', (e) => e.stopPropagation());
     exactInput.addEventListener('change', () => {
@@ -553,37 +737,47 @@ function renderDay() {
       }
       state = core.setManualElapsed(state, row.clockId, day, ms, now());
       persist();
-      afterPointer(() => {
-        renderDay();
-        tick();
-      });
+      // The extra tick lets focus land on the control the user moved to (Tab
+      // or click) before the rows are rebuilt around it.
+      afterPointer(() =>
+        setTimeout(() => {
+          renderDay();
+          tick();
+        }, 0),
+      );
     });
     tdExact.appendChild(exactInput);
 
     const tdHours = document.createElement('td');
-    tdHours.append(hoursText, copyButton(currentHours, t('copyHours')));
+    tdHours.append(hoursText, copyButton(currentHours, t('copyHours'), rowName, 'copy-hours'));
 
     const tdDescription = document.createElement('td');
     const descInput = document.createElement('input');
     descInput.type = 'text';
     descInput.value = row.description;
     descInput.autocomplete = 'off';
+    descInput.dataset.control = 'description';
+    descInput.setAttribute('aria-label', t('rowDescriptionLabel', { dossier: rowName }));
     const descList = document.createElement('datalist');
     descList.id = `day-desc-suggestions-${row.clockId}`;
     descInput.setAttribute('list', descList.id);
     descInput.addEventListener('focus', () => fillSuggestions(descList, row.dossier));
     descInput.addEventListener('click', (e) => e.stopPropagation());
-    descInput.addEventListener('change', () => {
+    const saveDescription = debouncedSave(() => {
       state = core.setDescription(state, row.clockId, day, descInput.value);
       persist();
     });
-    tdDescription.append(descInput, descList, copyButton(() => descInput.value, t('copyDescription')));
+    descInput.addEventListener('input', saveDescription.schedule);
+    descInput.addEventListener('change', saveDescription.flush);
+    tdDescription.append(descInput, descList, copyButton(() => descInput.value, t('copyDescription'), rowName, 'copy-description'));
 
     const tdBillable = document.createElement('td');
     const billableBtn = document.createElement('button');
     billableBtn.type = 'button';
     billableBtn.className = 'billable-toggle';
+    billableBtn.dataset.control = 'billable';
     setBillableToggle(billableBtn, row.billable, t('dayBillableTitle'));
+    billableBtn.setAttribute('aria-label', t('rowBillableLabel', { dossier: rowName }));
     billableBtn.addEventListener('click', (e) => {
       e.stopPropagation();
       state = core.setDayBillable(state, row.clockId, day, !row.billable);
@@ -597,6 +791,8 @@ function renderDay() {
     const checkbox = document.createElement('input');
     checkbox.type = 'checkbox';
     checkbox.checked = row.overgenomen;
+    checkbox.dataset.control = 'overgenomen';
+    checkbox.setAttribute('aria-label', t('rowOvergenomenLabel', { dossier: rowName }));
     checkbox.addEventListener('click', (e) => e.stopPropagation());
     checkbox.addEventListener('change', () => {
       state = core.setOvergenomen(state, row.clockId, day, checkbox.checked);
@@ -611,7 +807,8 @@ function renderDay() {
     deleteBtn.className = 'row-delete';
     deleteBtn.textContent = '✕';
     deleteBtn.title = t('deleteDayTime');
-    deleteBtn.setAttribute('aria-label', `${t('deleteDayTime')}: ${row.dossier}`);
+    deleteBtn.dataset.control = 'delete';
+    deleteBtn.setAttribute('aria-label', `${t('deleteDayTime')}: ${rowName}`);
     deleteBtn.addEventListener('click', (e) => {
       e.stopPropagation();
       showConfirm(t('confirmDeleteDayTime', { dossier: row.dossier || '-', day: formatDayLabel(day) }), () => {
@@ -635,6 +832,7 @@ function renderDay() {
   }
 
   renderDayFoot(rows);
+  restoreDayFocus(focusBefore);
 }
 
 function renderDayFoot(rows) {
@@ -661,12 +859,14 @@ function renderDayFoot(rows) {
   tfoot.appendChild(tr);
 }
 
-function copyButton(valueOrFn, label) {
+function copyButton(valueOrFn, label, rowName, control) {
   const btn = document.createElement('button');
   btn.type = 'button';
   btn.className = 'cell-copy-btn';
   btn.textContent = '⎘';
   btn.title = label;
+  btn.dataset.control = control;
+  btn.setAttribute('aria-label', `${label}: ${rowName}`);
   btn.addEventListener('click', (e) => {
     e.stopPropagation();
     const value = typeof valueOrFn === 'function' ? valueOrFn() : valueOrFn;
@@ -737,7 +937,17 @@ function showManualError(key) {
   manualError.hidden = !key;
 }
 
+// The day an entry goes to is fixed when the form opens, so a form opened
+// before midnight still adds to that day.
+let manualDay = null;
+
+function updateManualDayLabel() {
+  document.getElementById('manual-entry-day').textContent = manualDay ? t('forDay', { day: formatDayLabel(manualDay) }) : '';
+}
+
 function closeManualForm() {
+  manualDay = null;
+  updateManualDayLabel();
   manualForm.reset();
   showManualError(null);
   manualForm.hidden = true;
@@ -749,6 +959,8 @@ document.getElementById('manual-entry-open').addEventListener('click', () => {
     return;
   }
   manualForm.hidden = false;
+  manualDay = shownDay();
+  updateManualDayLabel();
   manualTime.placeholder = t('manualTimePlaceholder');
   manualBillable.checked = true;
   manualDossier.focus();
@@ -757,7 +969,7 @@ document.getElementById('manual-entry-cancel').addEventListener('click', closeMa
 
 // The billable box starts at what the dossier's timer has on that day.
 manualDossier.addEventListener('change', () => {
-  manualBillable.checked = core.billableForDossier(state, manualDossier.value, shownDay());
+  manualBillable.checked = core.billableForDossier(state, manualDossier.value, manualDay || shownDay());
 });
 manualDescription.addEventListener('focus', () => {
   fillSuggestions(document.getElementById('manual-description-suggestions'), manualDossier.value);
@@ -778,7 +990,7 @@ manualForm.addEventListener('submit', (e) => {
   }
   const res = core.addManualEntry(
     state,
-    { dossier: manualDossier.value, day: shownDay(), ms, description: manualDescription.value, billable: manualBillable.checked },
+    { dossier: manualDossier.value, day: manualDay || shownDay(), ms, description: manualDescription.value, billable: manualBillable.checked },
     now(),
   );
   state = res.state;
@@ -813,8 +1025,11 @@ document.getElementById('copy-day-table-btn').addEventListener('click', (e) => {
 const WEEKDAY_LABELS_NL = ['Ma', 'Di', 'Wo', 'Do', 'Vr', 'Za', 'Zo'];
 const WEEKDAY_LABELS_EN = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
+let lastWeekRender = 0;
+
 function renderWeek() {
   const n = now();
+  lastWeekRender = n;
   const agg = core.aggregateWeek(state, weekCursor, n, {
     roundUnitMinutes: state.settings.roundUnitMinutes,
     roundMode: state.settings.roundMode,

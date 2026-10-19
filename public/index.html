@@ -31,17 +31,17 @@
   <button type="button" id="lang-toggle" class="lang-toggle" aria-label="Taal / Language">NL</button>
 </header>
 
-<nav class="tabs" id="tabs" aria-label="Views">
-  <button type="button" class="tab-btn is-active" data-tab="timers" data-i18n="tabTimers">Timers</button>
-  <button type="button" class="tab-btn" data-tab="day" data-i18n="tabDay">Dag</button>
-  <button type="button" class="tab-btn" data-tab="week" data-i18n="tabWeek">Week</button>
-  <button type="button" class="tab-btn" data-tab="settings" data-i18n="tabSettings">Instellingen</button>
+<nav class="tabs" id="tabs" role="tablist" aria-label="Views">
+  <button type="button" class="tab-btn is-active" id="tab-timers" role="tab" aria-selected="true" aria-controls="view-timers" data-tab="timers" data-i18n="tabTimers">Timers</button>
+  <button type="button" class="tab-btn" id="tab-day" role="tab" aria-selected="false" tabindex="-1" aria-controls="view-day" data-tab="day" data-i18n="tabDay">Dag</button>
+  <button type="button" class="tab-btn" id="tab-week" role="tab" aria-selected="false" tabindex="-1" aria-controls="view-week" data-tab="week" data-i18n="tabWeek">Week</button>
+  <button type="button" class="tab-btn" id="tab-settings" role="tab" aria-selected="false" tabindex="-1" aria-controls="view-settings" data-tab="settings" data-i18n="tabSettings">Instellingen</button>
 </nav>
 
 <main>
 <p id="storage-warning" class="storage-warning" data-i18n="storageWarning" hidden>Je browser staat niet toe dat deze pagina gegevens bewaart. Je tijden worden niet opgeslagen.</p>
 
-<section id="view-timers" class="view is-active">
+<section id="view-timers" class="view is-active" role="tabpanel" aria-labelledby="tab-timers">
   <div class="toolbar">
     <button type="button" id="new-timer-btn" data-i18n="newTimer">Nieuwe timer</button>
     <button type="button" id="pause-all-btn" data-i18n="pauseAll">Alles pauzeren</button>
@@ -57,7 +57,7 @@
   <datalist id="dossier-history"></datalist>
 </section>
 
-<section id="view-day" class="view">
+<section id="view-day" class="view" role="tabpanel" aria-labelledby="tab-day">
   <div class="toolbar">
     <button type="button" id="day-prev-btn" data-i18n="dayPrev">Vorige dag</button>
     <button type="button" id="day-today-btn" data-i18n="dayToday">Vandaag</button>
@@ -65,6 +65,7 @@
     <button type="button" id="manual-entry-open" data-i18n="manualEntryOpen">Tijd toevoegen</button>
   </div>
   <form id="manual-entry-form" class="manual-entry" hidden>
+    <p id="manual-entry-day" class="manual-entry-day"></p>
     <label class="field manual-dossier"><span data-i18n="colDossier">Dossier</span>
       <input type="text" id="manual-dossier" list="dossier-history" autocomplete="off">
     </label>
@@ -104,7 +105,7 @@
   <button type="button" id="copy-day-table-btn" data-i18n="copyDayTable">Kopieer dag als tabel</button>
 </section>
 
-<section id="view-week" class="view">
+<section id="view-week" class="view" role="tabpanel" aria-labelledby="tab-week">
   <div class="toolbar">
     <button type="button" id="week-prev-btn" data-i18n="weekPrev">Vorige week</button>
     <button type="button" id="week-this-btn" data-i18n="weekThis">Deze week</button>
@@ -128,7 +129,7 @@
   </div>
 </section>
 
-<section id="view-settings" class="view">
+<section id="view-settings" class="view" role="tabpanel" aria-labelledby="tab-settings">
   <h2 data-i18n="settingsTitle">Instellingen</h2>
   <form id="settings-form" class="settings-form">
     <label class="field">
@@ -191,7 +192,7 @@
 </div>
 
 <div id="confirm-dialog" class="confirm-dialog" hidden>
-  <div class="confirm-box">
+  <div class="confirm-box" role="dialog" aria-modal="true" aria-labelledby="confirm-message" aria-describedby="confirm-message">
     <p id="confirm-message"></p>
     <div class="confirm-actions">
       <button type="button" id="confirm-ok" data-i18n="delete">Verwijderen</button>
