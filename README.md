@@ -87,6 +87,8 @@ Everything that is served lives in `public/`:
 
 - `index.html`, `styles.css`: markup and styling.
 - `_headers`: CSP and security headers for Cloudflare Pages.
+- `favicon.svg`, `og-image.png`, `robots.txt`, `sitemap.xml`: icon, link
+  preview image and crawler files for the public site.
 - `src/app.js`: DOM and UI wiring.
 - `src/core.js`: pure logic, no DOM or storage access, testable in
   isolation.

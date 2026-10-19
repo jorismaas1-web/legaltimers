@@ -21,8 +21,11 @@ jobs:
           node-version: ${{ matrix.node }}
       - run: node --test
       - name: No network calls in served code
+        # The canonical and og: tags carry absolute URLs to the site itself;
+        # browsers never fetch them, so only those exact lines are exempt.
         run: |
-          if grep -rnE '\b(fetch|XMLHttpRequest|WebSocket|EventSource|sendBeacon)\s*\(|new (XMLHttpRequest|WebSocket|EventSource)|https?://' public/src public/index.html public/styles.css; then
+          if grep -rnE '\b(fetch|XMLHttpRequest|WebSocket|EventSource|sendBeacon)\s*\(|new (XMLHttpRequest|WebSocket|EventSource)|https?://' public/src public/index.html public/styles.css \
+            | grep -vE '^public/index\.html:[0-9]+:<(link rel="canonical" href|meta property="og:(url|image)" content)="https://legaltimers\.com/'; then
             echo "Served code must not make network requests or load remote resources (see README, Privacy)."
             exit 1
           fi
