@@ -37,9 +37,21 @@ product spec the code is built against; keep it in sync when behaviour changes.
   naming the count. Same rule as ✕: the cards go, logged time stays in Day
   and Week; a running clock is paused first.
 - "New timer" adds an empty card at the end, dossier field focused.
-- Multiple tabs: a tab picks up the state another tab saved (storage event), so
-  two open tabs never overwrite each other.
-- If the browser refuses local storage, a warning says times are not saved.
+- Multiple tabs: a tab picks up the state another tab saved (storage event,
+  also when storage is cleared). The stored state carries a revision number
+  that each save raises by one. A save from a tab that missed a newer save is
+  refused: the tab reloads the stored state and shows a notice that its last
+  action was not saved. So a stale tab can lose its own last action (it must
+  be repeated) but never deletes another tab's data.
+- If the browser refuses local storage, a warning says the last change was not
+  saved; it stays until a later save succeeds.
+- Unreadable stored data is never silently replaced: the raw text is copied to
+  a `legaltimers:v1:unreadable-<time>` key, a banner says so, and a button
+  downloads that copy. The copy is never deleted by the app.
+- Backup import is validated strictly (types, unique ids, references, ranges,
+  size caps, no newer schema version) and dry-run rendered before it replaces
+  anything; on failure the current data stays untouched. An accepted import is
+  a deliberate overwrite and wins over other tabs.
 
 ## Time model
 

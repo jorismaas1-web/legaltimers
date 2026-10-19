@@ -1,5 +1,5 @@
 import * as core from './core.js';
-import { createStorage, validateBackupShape, normalizeState, STORAGE_KEY } from './storage.js';
+import { createStorage, validateBackup, normalizeState, STORAGE_KEY, MAX_IMPORT_BYTES } from './storage.js';
 import { detectLanguage, translate } from './i18n.js';
 
 // Reading window.localStorage itself throws when the browser blocks site
@@ -21,7 +21,7 @@ function storageBackend() {
 }
 
 const store = createStorage(storageBackend());
-let state = withLanguage(store.load());
+let state = loadState();
 
 let focusNewDossierFor = null;
 let weekCursor = core.getWeekStart(Date.now());
@@ -43,16 +43,36 @@ function decimalSeparator() {
   return state.settings.language === 'nl' ? ',' : '.';
 }
 
-function persist() {
-  const ok = store.save(state);
-  document.getElementById('storage-warning').hidden = ok;
+// Reads the stored state. If it was unreadable the storage module has already
+// copied the raw text aside; the banner offers it as a download.
+function loadState() {
+  const loaded = withLanguage(store.load());
+  const unreadable = store.lastLoadProblem === 'unreadable';
+  if (unreadable) document.getElementById('storage-unreadable').hidden = false;
+  return loaded;
 }
 
-// Another tab with this page saved: take over its state so the tabs do not
-// overwrite each other's time.
+function persist(opts) {
+  const result = store.trySave(state, opts);
+  if (result === 'conflict') {
+    // Another tab saved newer data. Writing now would delete its changes.
+    state = loadState();
+    rerenderAll();
+    document.getElementById('sync-notice').hidden = false;
+    return false;
+  }
+  const ok = result === 'ok';
+  // Stays visible until a later save succeeds.
+  document.getElementById('storage-warning').hidden = ok;
+  if (ok) document.getElementById('sync-notice').hidden = true;
+  return ok;
+}
+
+// Another tab with this page saved (or cleared storage, key === null): take
+// over its state. Saves from a stale tab are refused in persist() anyway.
 window.addEventListener('storage', (e) => {
-  if (e.key !== STORAGE_KEY) return;
-  state = withLanguage(store.load());
+  if (e.key !== null && e.key !== STORAGE_KEY) return;
+  state = loadState();
   rerenderAll();
 });
 
@@ -1019,47 +1039,87 @@ document.getElementById('lang-toggle').addEventListener('click', () => {
 
 // ---------- Backup ----------
 
-document.getElementById('backup-export-btn').addEventListener('click', () => {
-  const blob = new Blob([JSON.stringify(state, null, 2)], { type: 'application/json' });
+function downloadText(filename, text) {
+  const blob = new Blob([text], { type: 'application/json' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = `legaltimers-backup-${today()}.json`;
+  a.download = filename;
   document.body.appendChild(a);
   a.click();
   a.remove();
   URL.revokeObjectURL(url);
+}
+
+document.getElementById('backup-export-btn').addEventListener('click', () => {
+  downloadText(`legaltimers-backup-${today()}.json`, JSON.stringify(state, null, 2));
 });
 
+document.getElementById('unreadable-download-btn').addEventListener('click', () => {
+  downloadText(`legaltimers-unreadable-${today()}.json`, store.quarantinedRaw || '');
+  document.getElementById('storage-unreadable').hidden = true;
+});
+
+// Runs the render-critical core functions on a candidate state, so a backup
+// that passes the shape checks but would still crash the UI is refused
+// before it replaces anything.
+function dryRunRender(candidate) {
+  const n = now();
+  core.getDaySummaryRows(candidate, core.dayKey(n), n);
+  core.aggregateWeek(candidate, core.getWeekStart(n), n, candidate.settings);
+  core.descriptionSuggestions(candidate, candidate.clocks.length ? candidate.clocks[0].dossier : '');
+}
+
+function showImportError(errorEl, reason) {
+  errorEl.textContent = reason ? `${t('backupImportInvalid')} (${reason})` : t('backupImportInvalid');
+  errorEl.hidden = false;
+}
+
 document.getElementById('backup-import-input').addEventListener('change', (e) => {
-  const file = e.target.files && e.target.files[0];
+  const input = e.target;
+  const file = input.files && input.files[0];
   if (!file) return;
   const errorEl = document.getElementById('backup-error');
   errorEl.hidden = true;
+  if (file.size > MAX_IMPORT_BYTES) {
+    errorEl.textContent = t('backupImportTooBig');
+    errorEl.hidden = false;
+    input.value = '';
+    return;
+  }
   const reader = new FileReader();
   reader.onload = () => {
-    let data;
+    input.value = '';
+    let data = null;
     try {
       data = JSON.parse(String(reader.result));
     } catch (err) {
-      data = null;
+      showImportError(errorEl, 'JSON');
+      return;
     }
-    if (!data || !validateBackupShape(data)) {
-      errorEl.textContent = t('backupImportInvalid');
-      errorEl.hidden = false;
-      e.target.value = '';
+    const check = validateBackup(data);
+    if (!check.ok) {
+      showImportError(errorEl, check.reason);
+      return;
+    }
+    let candidate;
+    try {
+      candidate = withLanguage(normalizeState(data));
+      dryRunRender(candidate);
+    } catch (err) {
+      showImportError(errorEl, 'render');
       return;
     }
     showConfirm(
       t('backupImportConfirm'),
       () => {
-        state = withLanguage(normalizeState(data));
-        persist();
+        state = candidate;
+        // A deliberate overwrite: wins over whatever another tab saved.
+        persist({ force: true });
         rerenderAll();
       },
       t('backupImport'),
     );
-    e.target.value = '';
   };
   reader.readAsText(file);
 });
