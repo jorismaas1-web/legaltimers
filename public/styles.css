@@ -398,6 +398,14 @@ tbody tr:hover {
   pointer-events: none;
 }
 
+/* The first-use notice lives in the same stack, so it never covers a
+   banner's buttons. */
+.banner-stack .first-use-notice {
+  position: static;
+  pointer-events: auto;
+  width: 100%;
+}
+
 .storage-warning {
   pointer-events: auto;
   width: 100%;

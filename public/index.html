@@ -49,6 +49,10 @@
   <button type="button" id="unreadable-continue-btn" data-i18n="storageUnreadableContinue">Doorgaan zonder kopie</button>
 </div>
 <p id="sync-notice" class="storage-warning" role="status" data-i18n="syncConflict" hidden>Een ander tabblad heeft je tijden net gewijzigd. Je laatste actie is niet opgeslagen; doe hem opnieuw.</p>
+<div id="first-use-notice" class="first-use-notice" hidden>
+  <p data-i18n="firstUseNotice">Alles blijft in je browser. Wis je je browsergegevens, dan ben je je tijden kwijt. Maak af en toe een backup.</p>
+  <button type="button" id="first-use-dismiss">OK</button>
+</div>
 </div>
 
 <section id="view-timers" class="view is-active" role="tabpanel" aria-labelledby="tab-timers">
@@ -197,11 +201,6 @@
   <br>
   <span data-i18n="privacyHow">Controleren: open de Network-tab van de browser (DevTools) en herlaad de pagina; er verschijnt geen enkel verzoek.</span>
 </p>
-
-<div id="first-use-notice" class="first-use-notice" hidden>
-  <p data-i18n="firstUseNotice">Alles blijft in je browser. Wis je je browsergegevens, dan ben je je tijden kwijt. Maak af en toe een backup.</p>
-  <button type="button" id="first-use-dismiss">OK</button>
-</div>
 
 <div id="confirm-dialog" class="confirm-dialog" hidden>
   <div class="confirm-box" role="dialog" aria-modal="true" aria-labelledby="confirm-message">
