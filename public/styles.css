@@ -277,6 +277,12 @@ tbody tr:hover {
   opacity: 0.6;
 }
 
+.entered-before {
+  display: block;
+  color: var(--muted);
+  font-size: 0.8em;
+}
+
 .week-range-label {
   color: var(--muted);
 }

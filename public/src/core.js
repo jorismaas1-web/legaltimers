@@ -17,10 +17,15 @@ export const MIN_BOOKABLE_MS = 30 * 1000;
 //   segments: [{ clockId, start, end }],      // finalized, each within one local day
 //   running: { clockId, startedAt } | null,   // at most one clock runs
 //   adjustments: { "<clockId>__<day>": deltaMs },
-//   dayData: { "<clockId>__<day>": { description, dossier?, overgenomen, ready, billable? } },
+//   dayData: { "<clockId>__<day>": { description, dossier?, overgenomen, overgenomenMinutes?, ready, billable? } },
 //     // dossier: the dossier line when the description was saved
 //     // billable unset = follow the card default
-//   longRunDecisions: { "<clockId>__<startedAt>": "keep" | { correctedEnd } },
+//     // overgenomenMinutes: the rounded minutes that were entered when the row
+//     // was ticked; the mark only counts while the row still rounds to that
+//     // (unset = legacy data, the mark always counts)
+//   longRunDecisions: { "<clockId>__<startedAt>": "keep" | { keptAt } | { correctedEnd } },
+//     // "keep" is the legacy form (never asked again); { keptAt } asks again
+//     // after 3 hours or a new day
 //   settings: {
 //     roundUnitMinutes, roundMode, hoursFormat,
 //     language, deleteOlderThanWeeks, weeklyBillableNorm
@@ -150,6 +155,57 @@ export function updateClock(state, clockId, patch) {
   return next;
 }
 
+// Renames a card without rewriting history: a card reused for another client
+// must not move its earlier days to that client. Time on days before today
+// (segments, adjustments, day data, and the part of a run from before today's
+// midnight) moves to an archived card that keeps the old dossier; today stays
+// with the renamed card, so a typo fixed the same day still works.
+export function renameClock(state, clockId, dossier, now) {
+  const clock = state.clocks.find((c) => c.id === clockId);
+  const today = dayKey(now);
+  const todayStart = startOfLocalDay(now);
+  const oldDossier = ((clock && clock.dossier) || '').trim();
+  if (!clock || !oldDossier || oldDossier === (dossier || '').trim()) {
+    return updateClock(state, clockId, { dossier });
+  }
+  const earlierKey = (key) => {
+    const [id, day] = key.split('__');
+    return id === clockId && day && day < today;
+  };
+  const oldSegments = state.segments.filter((s) => s.clockId === clockId && dayKey(s.start) < today);
+  const oldAdjustments = Object.keys(state.adjustments).filter(earlierKey);
+  const oldDayData = Object.keys(state.dayData).filter(earlierKey);
+  const runBefore = state.running && state.running.clockId === clockId && state.running.startedAt < todayStart;
+  if (!oldSegments.length && !oldAdjustments.length && !oldDayData.length && !runBefore) {
+    return updateClock(state, clockId, { dossier });
+  }
+
+  const next = clone(state);
+  const archivedId = `c${next.nextClockSeq}`;
+  next.nextClockSeq += 1;
+  const archived = { id: archivedId, dossier: clock.dossier, createdAt: clock.createdAt, archived: true };
+  if (clock.billableChanges) archived.billableChanges = clock.billableChanges.map((c) => [...c]);
+  next.clocks.push(archived);
+  next.segments = next.segments.map((s) =>
+    s.clockId === clockId && dayKey(s.start) < today ? { ...s, clockId: archivedId } : s,
+  );
+  for (const key of oldAdjustments) {
+    next.adjustments[adjKey(archivedId, key.split('__')[1])] = next.adjustments[key];
+    delete next.adjustments[key];
+  }
+  for (const key of oldDayData) {
+    next.dayData[adjKey(archivedId, key.split('__')[1])] = next.dayData[key];
+    delete next.dayData[key];
+  }
+  if (runBefore) {
+    const { startedAt } = next.running;
+    next.segments.push(...splitSegment({ clockId: archivedId, start: startedAt, end: todayStart }));
+    next.running = { ...next.running, startedAt: todayStart };
+  }
+  next.clocks = next.clocks.map((c) => (c.id === clockId ? { ...c, dossier } : c));
+  return next;
+}
+
 export function recordDossierUsed(state, dossier) {
   const value = (dossier || '').trim();
   if (!value) return clone(state);
@@ -171,6 +227,9 @@ export function pruneOlderThan(state, weeks, now) {
   const next = clone(state);
   const cutoff = addDays(startOfLocalDay(now), -weeks * 7);
   next.segments = next.segments.filter((s) => s.start >= cutoff);
+  // A run started before the cutoff would bring the deleted days back when
+  // it is paused, so it continues from the cutoff.
+  if (next.running && next.running.startedAt < cutoff) next.running.startedAt = cutoff;
   for (const key of Object.keys(next.adjustments)) {
     const day = key.split('__')[1];
     if (day && new Date(`${day}T00:00:00`).getTime() < cutoff) delete next.adjustments[key];
@@ -204,7 +263,10 @@ export function pauseRunning(state, now) {
 // which the caller has already cloned.
 function reopenDay(next, clockId, day) {
   const key = adjKey(clockId, day);
-  if (next.dayData[key]) next.dayData[key] = { ...next.dayData[key], ready: false, overgenomen: false };
+  if (next.dayData[key]) {
+    const { overgenomenMinutes, ...rest } = next.dayData[key];
+    next.dayData[key] = { ...rest, ready: false, overgenomen: false };
+  }
 }
 
 export function startClock(state, clockId, now) {
@@ -297,11 +359,24 @@ export function setDescription(state, clockId, day, description) {
   return next;
 }
 
-export function setOvergenomen(state, clockId, day, value) {
+// Ticking stores the rounded minutes the row had at that moment (`minutes`),
+// so the mark stops counting once the row rounds to something else.
+export function setOvergenomen(state, clockId, day, value, minutes) {
   const next = clone(state);
   const key = adjKey(clockId, day);
-  next.dayData[key] = { ...getDayData(next, clockId, day), overgenomen: !!value };
+  const { overgenomenMinutes, ...rest } = getDayData(next, clockId, day);
+  next.dayData[key] = { ...rest, overgenomen: !!value };
+  if (value && Number.isFinite(minutes)) next.dayData[key].overgenomenMinutes = minutes;
   return next;
+}
+
+// The mark counts only for the amount that was entered. Legacy marks without
+// a stored amount always count.
+function enteredState(dd, roundedMinutes) {
+  if (!dd.overgenomen) return { entered: false };
+  const stored = dd.overgenomenMinutes;
+  if (typeof stored !== 'number' || stored === roundedMinutes) return { entered: true };
+  return { entered: false, enteredMinutes: stored };
 }
 
 export function markReady(state, clockId, day, now) {
@@ -334,18 +409,32 @@ export function billableForDossier(state, dossier, day) {
 
 // Books time written by hand on a day. It adds to the dossier's timer for
 // that day; a dossier without a timer gets one that stays off the Timers
-// grid (archived), so the entry only shows in Day and Week. Returns
-// { state, clockId }, or null for an empty dossier or no time.
+// grid (archived), so the entry only shows in Day and Week. If that timer
+// already has time that day with the other billable flag, the entry goes to
+// another timer of the dossier (one with the matching flag, or a new archived
+// one) instead of reclassifying the existing time: two rows for the dossier.
+// Returns { state, clockId }, or null for an empty dossier or no time.
 export function addManualEntry(state, { dossier, day, ms, description = '', billable = true }, now) {
   const value = (dossier || '').trim();
   if (!value || !(ms > 0)) return null;
   let next = clone(state);
   let clock = findClockByDossier(next, value);
-  if (!clock) {
+  const addArchivedClock = () => {
     const res = addClock(next, { dossier: value }, now);
     next = res.state;
     next.clocks = next.clocks.map((c) => (c.id === res.clockId ? { ...c, archived: true } : c));
-    clock = next.clocks.find((c) => c.id === res.clockId);
+    return next.clocks.find((c) => c.id === res.clockId);
+  };
+  if (!clock) {
+    clock = addArchivedClock();
+  } else if (
+    isBillable(next, clock.id, day) !== !!billable &&
+    (elapsedByClock(next, day, now).get(clock.id) || 0) >= MIN_BOOKABLE_MS
+  ) {
+    const other = next.clocks
+      .filter((c) => c.id !== clock.id && (c.dossier || '').trim() === value && isBillable(next, c.id, day) === !!billable)
+      .sort((a, b) => Number(!!a.archived) - Number(!!b.archived) || b.createdAt - a.createdAt)[0];
+    clock = other || addArchivedClock();
   }
   const key = adjKey(clock.id, day);
   next.adjustments[key] = (next.adjustments[key] || 0) + ms;
@@ -431,18 +520,32 @@ export function adoptBillableFromDossier(state, clockId, now) {
   return setClockBillable(state, clockId, false, now);
 }
 
+// Hours for a list of rounded-minute cells. In decimal format each cell is
+// the 2-decimal number that gets copied (5 min = 0.08), so a total is the sum
+// of those, not of the exact minutes; h:mm keeps whole-minute sums.
+function hoursOf(minutesList, settings) {
+  const sum = minutesList.reduce((a, b) => a + b, 0);
+  if (settings.hoursFormat !== 'decimal') return sum / 60;
+  return round2(minutesList.reduce((a, m) => a + round2(m / 60), 0));
+}
+
 // Rounded time for day-summary rows, split by billable flag. Each row is
-// rounded on its own (that is what gets booked); sums are kept in whole
-// minutes so h:mm totals never drift.
+// rounded on its own (that is what gets booked); totals add up what is shown
+// per row (see hoursOf).
 export function daySplit(rows, settings) {
-  let billable = 0;
-  let nonBillable = 0;
+  const all = [];
+  const billable = [];
+  const nonBillable = [];
   for (const r of rows) {
     const m = roundMinutes(r.elapsedMs, settings.roundUnitMinutes, settings.roundMode);
-    if (r.billable) billable += m;
-    else nonBillable += m;
+    all.push(m);
+    (r.billable ? billable : nonBillable).push(m);
   }
-  return { total: (billable + nonBillable) / 60, billable: billable / 60, nonBillable: nonBillable / 60 };
+  return {
+    total: hoursOf(all, settings),
+    billable: hoursOf(billable, settings),
+    nonBillable: hoursOf(nonBillable, settings),
+  };
 }
 
 export function billableShare(billableHours, totalHours) {
@@ -482,15 +585,22 @@ export function getDaySummaryRows(state, day, now) {
     const elapsed = byClock.get(c.id) || 0;
     if (elapsed < MIN_BOOKABLE_MS) continue;
     const dd = getDayData(state, c.id, day);
-    rows.push({
+    const roundedMinutes = roundMinutes(elapsed, state.settings.roundUnitMinutes, state.settings.roundMode);
+    const { entered, enteredMinutes } = enteredState(dd, roundedMinutes);
+    const row = {
       clockId: c.id,
       dossier: c.dossier,
       elapsedMs: elapsed,
+      roundedMinutes,
       description: dd.description,
-      overgenomen: dd.overgenomen,
+      overgenomen: entered,
       ready: dd.ready,
       billable: isBillable(state, c.id, day),
-    });
+    };
+    // Marked as entered for another amount: the UI shows it as not entered
+    // and says what was entered before.
+    if (enteredMinutes !== undefined) row.enteredMinutes = enteredMinutes;
+    rows.push(row);
   }
   return rows;
 }
@@ -501,6 +611,19 @@ export function isLongRun(startedAt, now, thresholdMs = 3 * 3600 * 1000) {
   if (now - startedAt > thresholdMs) return true;
   if (dayKey(startedAt) !== dayKey(now)) return true;
   return false;
+}
+
+// Whether the long-run question is due for the running clock. No decision:
+// ask when it is a long run. { keptAt }: ask again after 3 more hours or on a
+// new day (a kept run that sleeps through a weekend is still questioned).
+// Legacy "keep": never ask again.
+export function needsLongRunReview(running, decision, now, thresholdMs = 3 * 3600 * 1000) {
+  if (!running) return false;
+  if (decision === 'keep') return false;
+  if (decision && typeof decision.keptAt === 'number') {
+    return now - decision.keptAt > thresholdMs || dayKey(decision.keptAt) !== dayKey(now);
+  }
+  return isLongRun(running.startedAt, now, thresholdMs);
 }
 
 // ---------- rounding ----------
@@ -546,7 +669,15 @@ export function formatHMS(ms) {
 
 // ---------- parsing ----------
 
-export function parseTimeInput(str) {
+// Null for anything unparseable, not finite, or above `maxHours` (one day's
+// time for one matter cannot exceed 24 hours; the weekly norm passes a bigger
+// bound).
+export function parseTimeInput(str, maxHours = 24) {
+  const ms = parseTimeMs(str);
+  return Number.isFinite(ms) && ms <= maxHours * 3600 * 1000 ? ms : null;
+}
+
+function parseTimeMs(str) {
   if (typeof str !== 'string') return null;
   const s = str.trim();
   if (!s) return null;
@@ -584,6 +715,11 @@ export function resolveEndTime(startedAt, str, now) {
   d.setHours(h, mi, 0, 0);
   let end = d.getTime();
   if (end <= startedAt) {
+    // The hour that repeats when clocks go back: setHours picks the first
+    // 02:45, so the same wall time an hour later may be the one after the start.
+    const later = end + 3600 * 1000;
+    const l = new Date(later);
+    if (later > startedAt && l.getHours() === h && l.getMinutes() === mi) return Math.min(later, now);
     const n = new Date(end);
     n.setDate(n.getDate() + 1);
     end = n.getTime();
@@ -611,13 +747,23 @@ function tsvField(v) {
   return String(v ?? '').replace(/[\t\r\n]+/g, ' ');
 }
 
+// Free text pasted into a spreadsheet must stay text: a leading apostrophe
+// stops "=SUM(...)" and the like from becoming a formula. "-" only counts
+// when it is followed by something other than a space or digit ("-5" and
+// "- note" are harmless).
+function tsvText(v) {
+  const s = tsvField(v);
+  return /^([=+@]|-[^\s\d])/.test(s) ? `'${s}` : s;
+}
+
 export const TSV_COLUMNS = ['date', 'project', 'dossier', 'hours', 'description', 'billable'];
+const TSV_NUMERIC = new Set(['date', 'hours']);
 
 // `header` maps each column to its label (defaults to the column names).
 export function buildDayTSV(rows, header = {}) {
-  const lines = [TSV_COLUMNS.map((c) => tsvField(header[c] ?? c)).join('\t')];
+  const lines = [TSV_COLUMNS.map((c) => tsvText(header[c] ?? c)).join('\t')];
   for (const r of rows) {
-    lines.push(TSV_COLUMNS.map((c) => tsvField(r[c])).join('\t'));
+    lines.push(TSV_COLUMNS.map((c) => (TSV_NUMERIC.has(c) ? tsvField(r[c]) : tsvText(r[c]))).join('\t'));
   }
   return lines.join('\n');
 }
@@ -629,42 +775,41 @@ export function aggregateWeek(state, weekStartMs, now, settings) {
   for (let i = 0; i < 7; i++) days.push(dayKey(addDays(weekStartMs, i)));
   const byDay = days.map((day) => elapsedByClock(state, day, now));
 
+  // Rounded minutes of every row cell, per day; totals are built from these
+  // with hoursOf so they equal what the cells show.
+  const cells = { all: days.map(() => []), billable: days.map(() => []), nonBillable: days.map(() => []) };
   const rows = [];
-  const minutes = { all: [0, 0, 0, 0, 0, 0, 0], billable: [0, 0, 0, 0, 0, 0, 0] };
   for (const c of state.clocks) {
     const mins = byDay.map((m) => roundMinutes(m.get(c.id) || 0, settings.roundUnitMinutes, settings.roundMode));
     if (!mins.some((m) => m > 0)) continue;
     const billable = days.map((day) => isBillable(state, c.id, day));
     mins.forEach((m, i) => {
-      minutes.all[i] += m;
-      if (billable[i]) minutes.billable[i] += m;
+      cells.all[i].push(m);
+      cells[billable[i] ? 'billable' : 'nonBillable'][i].push(m);
     });
-    const hours = mins.map((m) => m / 60);
-    rows.push({ clockId: c.id, dossier: c.dossier, hours, billable, total: sumOf(mins) / 60 });
+    rows.push({ clockId: c.id, dossier: c.dossier, hours: mins.map((m) => m / 60), billable, total: hoursOf(mins, settings) });
   }
 
-  const toHours = (xs) => xs.map((m) => m / 60);
+  const perDay = (lists) => lists.map((l) => hoursOf(l, settings));
+  const week = (lists) => hoursOf(lists.flat(), settings);
   return {
     days,
     rows,
-    dayTotals: toHours(minutes.all),
-    weekTotal: sumOf(minutes.all) / 60,
-    billableDayTotals: toHours(minutes.billable),
-    nonBillableDayTotals: minutes.all.map((m, i) => (m - minutes.billable[i]) / 60),
-    billableWeekTotal: sumOf(minutes.billable) / 60,
-    nonBillableWeekTotal: (sumOf(minutes.all) - sumOf(minutes.billable)) / 60,
+    dayTotals: perDay(cells.all),
+    weekTotal: week(cells.all),
+    billableDayTotals: perDay(cells.billable),
+    nonBillableDayTotals: perDay(cells.nonBillable),
+    billableWeekTotal: week(cells.billable),
+    nonBillableWeekTotal: week(cells.nonBillable),
   };
-}
-
-function sumOf(xs) {
-  return xs.reduce((a, b) => a + b, 0);
 }
 
 export function weekHasUnprocessed(state, day, now) {
   const byClock = elapsedByClock(state, day, now);
   for (const c of state.clocks) {
     if ((byClock.get(c.id) || 0) < MIN_BOOKABLE_MS) continue;
-    if (!getDayData(state, c.id, day).overgenomen) return true;
+    const rounded = roundMinutes(byClock.get(c.id), state.settings.roundUnitMinutes, state.settings.roundMode);
+    if (!enteredState(getDayData(state, c.id, day), rounded).entered) return true;
   }
   return false;
 }
