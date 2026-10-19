@@ -22,7 +22,8 @@ export const MIN_BOOKABLE_MS = 30 * 1000;
 //     // billable unset = follow the card default
 //     // overgenomenMinutes: the rounded minutes that were entered when the row
 //     // was ticked; the mark only counts while the row still rounds to that
-//     // (unset = legacy data, the mark always counts)
+//     // (unset = legacy data, the mark always counts). Kept when the row is
+//     // reopened, cleared only by unticking.
 //   longRunDecisions: { "<clockId>__<startedAt>": "keep" | { keptAt } | { correctedEnd } },
 //     // "keep" is the legacy form (never asked again); { keptAt } asks again
 //     // after 3 hours or a new day
@@ -267,12 +268,11 @@ export function pauseRunning(state, now) {
 // Time on a row changed after it was marked: it is no longer final (Gereed)
 // and the new total still has to be booked (overgenomen). Mutates `next`,
 // which the caller has already cloned.
+// `overgenomenMinutes` stays: it is what was already booked, which the Day
+// view keeps showing so the new total is not booked twice.
 function reopenDay(next, clockId, day) {
   const key = adjKey(clockId, day);
-  if (next.dayData[key]) {
-    const { overgenomenMinutes, ...rest } = next.dayData[key];
-    next.dayData[key] = { ...rest, ready: false, overgenomen: false };
-  }
+  if (next.dayData[key]) next.dayData[key] = { ...next.dayData[key], ready: false, overgenomen: false };
 }
 
 export function startClock(state, clockId, now) {
@@ -377,11 +377,13 @@ export function setOvergenomen(state, clockId, day, value, minutes) {
 }
 
 // The mark counts only for the amount that was entered. Legacy marks without
-// a stored amount always count.
+// a stored amount always count. A row that was reopened (time edited, timer
+// restarted, entry added) is not entered, but still reports what was booked.
 function enteredState(dd, roundedMinutes) {
-  if (!dd.overgenomen) return { entered: false };
   const stored = dd.overgenomenMinutes;
-  if (typeof stored !== 'number' || stored === roundedMinutes) return { entered: true };
+  const hasAmount = typeof stored === 'number';
+  if (!dd.overgenomen) return hasAmount ? { entered: false, enteredMinutes: stored } : { entered: false };
+  if (!hasAmount || stored === roundedMinutes) return { entered: true };
   return { entered: false, enteredMinutes: stored };
 }
 

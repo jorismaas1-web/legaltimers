@@ -152,6 +152,35 @@ test('a row whose amount changed after ticking counts as not entered, with the o
   assert.equal(core.weekHasUnprocessed(state, '2026-10-08', now), false);
 });
 
+test('reopening a ticked row keeps the booked amount for the hint', () => {
+  const day = '2026-10-08';
+  const { state, clockId, now } = enteredFixture();
+  const ticked = core.setOvergenomen(state, clockId, day, true, 84);
+  const check = (s, label) => {
+    const row = core.getDaySummaryRows(s, day, now).find((r) => r.clockId === clockId);
+    assert.equal(row.overgenomen, false, label);
+    assert.equal(row.enteredMinutes, 84, label);
+    assert.equal(core.weekHasUnprocessed(s, day, now), true, label);
+  };
+  // exact time edit
+  check(core.setManualElapsed(ticked, clockId, day, 100 * MIN, now), 'time edit');
+  // restarting the timer the same day
+  const restartAt = localMs(2026, 10, 8, 18, 0);
+  const restarted = core.pauseRunning(core.startClock(ticked, clockId, restartAt), restartAt + 20 * MIN);
+  check(restarted, 'restart');
+  // a manual entry added to the row
+  const added = core.addManualEntry(ticked, { dossier: 'Acme / 1', day, ms: 15 * MIN, billable: true }, now);
+  check(added.state, 'manual entry');
+  // ticking again books the new total; unticking by hand clears it
+  const now2 = core.getDaySummaryRows(restarted, day, now).find((r) => r.clockId === clockId).roundedMinutes;
+  const reticked = core.setOvergenomen(restarted, clockId, day, true, now2);
+  const row = core.getDaySummaryRows(reticked, day, now).find((r) => r.clockId === clockId);
+  assert.equal(row.overgenomen, true);
+  assert.equal(row.enteredMinutes, undefined);
+  const cleared = core.setOvergenomen(restarted, clockId, day, false);
+  assert.equal(core.getDaySummaryRows(cleared, day, now).find((r) => r.clockId === clockId).enteredMinutes, undefined);
+});
+
 test('billable and description edits do not affect the entered check; legacy marks always count', () => {
   const fx = enteredFixture();
   let state = core.setOvergenomen(fx.state, fx.clockId, '2026-10-08', true, 84);
